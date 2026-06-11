@@ -1,0 +1,367 @@
+// Prisma schema — Heimdell Verified Consent API
+// Phase 1 foundations
+
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "rhel-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum ClientStatus {
+  ACTIVE
+  SUSPENDED
+  DEACTIVATED
+}
+
+enum SaleStatus {
+  PENDING
+  VERIFICATION_SENT
+  VERIFIED
+  DECLINED
+  EXPIRED
+  CANCELLED
+}
+
+enum VerificationStatus {
+  PENDING
+  OPENED
+  COMPLETED
+  DECLINED
+  EXPIRED
+}
+
+enum MandateStatus {
+  PENDING
+  ACTIVE
+  CANCELLED
+  FAILED
+}
+
+enum NotificationChannel {
+  SMS
+  EMAIL
+  WHATSAPP
+  WEBHOOK
+}
+
+enum NotificationStatus {
+  PENDING
+  QUEUED
+  SENT
+  SKIPPED
+  FAILED
+}
+
+enum ConsentEventType {
+  SESSION_OPENED
+  PAGE_VIEWED
+  TERMS_ACCEPTED
+  PRODUCT_CONFIRMED
+  DIRECT_DEBIT_CONFIRMED
+  VERIFICATION_COMPLETED
+  VERIFICATION_DECLINED
+  // Phase 4 — granular consent evidence events
+  TERMS_ACKNOWLEDGED
+  POLICIES_ACKNOWLEDGED
+  COOLING_OFF_ACKNOWLEDGED
+  DIRECT_DEBIT_AUTHORISED
+}
+
+enum Role {
+  PLATFORM_ADMIN
+  CLIENT_OWNER
+  CLIENT_MANAGER
+  OWNER
+  ADMIN
+  MANAGER
+  SELLER
+  COMPLIANCE_VIEWER
+}
+
+enum ApiKeyStatus {
+  ACTIVE
+  REVOKED
+  EXPIRED
+}
+
+// ---------------------------------------------------------------------------
+// Models
+// ---------------------------------------------------------------------------
+
+/// A business tenant/workspace. Future dashboard queries must scope through this.
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  primaryContactName  String?
+  primaryContactEmail String?
+  primaryContactPhone String?
+  notes               String?
+  archivedAt          DateTime?
+  archivedByUserId    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  clients     Client[]
+  memberships OrganizationMembership[]
+  apiKeys     ApiKey[]
+  auditLogs   AuditLog[]
+}
+
+/// Dashboard/admin user identity. Authentication provider wiring is intentionally not implemented yet.
+model User {
+  id        String   @id @default(cuid())
+  externalAuthId String? @unique
+  email     String   @unique
+  name      String?
+  mustChangePassword Boolean @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  memberships    OrganizationMembership[]
+  createdApiKeys ApiKey[]   @relation("ApiKeyCreatedBy")
+  submittedSales Sale[]     @relation("SaleSubmittedBy")
+  auditLogs      AuditLog[]
+}
+
+/// User access to an Organization. All dashboard authorization should flow through this table.
+model OrganizationMembership {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  userId         String
+  user           User         @relation(fields: [userId], references: [id])
+  role           Role
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([organizationId, userId])
+  @@index([userId])
+  @@index([organizationId, role])
+}
+
+/// API client (business/partner) that submits sales for verification.
+model Client {
+  id            String       @id @default(cuid())
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+  name          String
+  /// bcrypt hash of the raw API key — never store the raw key.
+  /// Compatibility field for the existing v1 API auth path.
+  /// New dashboard-managed keys should use ApiKey once a migration plan is agreed.
+  apiKeyHash    String       @unique
+  webhookUrl    String?
+  webhookSecret String?
+  status        ClientStatus @default(ACTIVE)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  sales        Sale[]
+  clientPolicy ClientPolicy?
+  apiKeys      ApiKey[]
+
+  @@index([organizationId])
+}
+
+/// Dashboard-managed API key metadata. Raw keys must never be stored.
+model ApiKey {
+  id              String       @id @default(cuid())
+  organizationId  String
+  organization    Organization @relation(fields: [organizationId], references: [id])
+  clientId        String?
+  client          Client?      @relation(fields: [clientId], references: [id])
+  name            String
+  keyPrefix       String
+  apiKeyHash      String       @unique
+  status          ApiKeyStatus @default(ACTIVE)
+  createdByUserId String?
+  createdByUser   User?        @relation("ApiKeyCreatedBy", fields: [createdByUserId], references: [id])
+  lastUsedAt      DateTime?
+  expiresAt       DateTime?
+  revokedAt       DateTime?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  @@index([organizationId])
+  @@index([clientId])
+  @@index([createdByUserId])
+}
+
+/// A sale / customer record submitted by a Client for consent verification.
+model Sale {
+  id              String     @id @default(cuid())
+  clientId        String
+  client          Client     @relation(fields: [clientId], references: [id])
+  clientReference String?
+  agentId         String?
+  submittedByUserId String?
+  submittedByUser   User?   @relation("SaleSubmittedBy", fields: [submittedByUserId], references: [id])
+
+  // Customer details
+  customerName    String
+  customerEmail   String?
+  customerPhone   String?
+  customerAddress String?
+
+  // Product details
+  productName      String
+  productPrice     Decimal
+  productFrequency String?
+  productTerms     String?
+  productPolicies  String?
+
+  // Sale context
+  salesChannel     String?  // door_to_door | phone | in_store | online | field_sales | other
+  aiMarketingOptIn Boolean? // null = not collected, true = opted in, false = opted out
+  coolingOffDays   Int?     // specific cooling-off period in days (overrides generic wording when set)
+
+  status    SaleStatus @default(PENDING)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  directDebitMandate   DirectDebitMandate?
+  verificationSessions VerificationSession[]
+  notifications        Notification[]
+
+  @@index([submittedByUserId])
+}
+
+/// Direct Debit mandate details associated with a Sale.
+model DirectDebitMandate {
+  id     String @id @default(cuid())
+  saleId String @unique
+  sale   Sale   @relation(fields: [saleId], references: [id])
+
+  bankName               String
+  sortCode               String
+  /// Only the last 4 digits — safe to store in plain text.
+  accountNumberLast4     String
+  /// AES-256-GCM encrypted full account number — see src/lib/crypto.ts.
+  encryptedAccountNumber String
+  accountHolderName      String
+  mandateStatus          MandateStatus @default(PENDING)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+/// A single verification session issued to a customer for a Sale.
+model VerificationSession {
+  id     String @id @default(cuid())
+  saleId String
+  sale   Sale   @relation(fields: [saleId], references: [id])
+
+  /// SHA-256 hash of the raw URL token — never store the raw token.
+  tokenHash   String             @unique
+  status      VerificationStatus @default(PENDING)
+  expiresAt   DateTime
+  openedAt    DateTime?
+  completedAt DateTime?
+  declinedAt  DateTime?
+  createdAt   DateTime           @default(now())
+
+  consentEvents ConsentEvent[]
+  certificate   Certificate?
+}
+
+/// Append-only audit log of customer actions within a VerificationSession.
+model ConsentEvent {
+  id                    String              @id @default(cuid())
+  verificationSessionId String
+  verificationSession   VerificationSession @relation(fields: [verificationSessionId], references: [id])
+
+  eventType    ConsentEventType
+  eventPayload Json             @default("{}")
+  ipAddress    String?
+  userAgent    String?
+  createdAt    DateTime         @default(now())
+}
+
+/// Immutable consent certificate produced when a session completes.
+model Certificate {
+  id                    String              @id @default(cuid())
+  verificationSessionId String              @unique
+  verificationSession   VerificationSession @relation(fields: [verificationSessionId], references: [id])
+
+  /// Full structured certificate payload (see src/lib/certificate.ts).
+  certificateJson Json
+  /// SHA-256 hash of the canonical certificateJson — tamper evidence.
+  proofHash       String
+  createdAt       DateTime @default(now())
+}
+
+/// Per-client configurable policy blocks -- loaded at verification time.
+/// Phase 14+: populated via admin dashboard or client management API.
+model ClientPolicy {
+  id       String @id @default(cuid())
+  clientId String @unique
+  client   Client @relation(fields: [clientId], references: [id])
+
+  /// Number of days in the cooling-off period (e.g. 14). Shown verbatim on the verification page.
+  coolingOffDays     Int     @default(14)
+  /// Optional override for the cooling-off description text.
+  coolingOffText     String?
+  /// Full terms and conditions text displayed to the customer.
+  termsAndConditions String?
+  /// Cancellation policy text displayed to the customer.
+  cancellationPolicy String?
+  /// JSON array of extra consent checkbox label strings.
+  customConsentItems Json    @default("[]")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+/// Outbound SMS / email notification record for a Sale.
+model Notification {
+  id     String @id @default(cuid())
+  saleId String
+  sale   Sale   @relation(fields: [saleId], references: [id])
+
+  channel           NotificationChannel
+  recipient         String
+  status            NotificationStatus @default(PENDING)
+  providerId        String?
+  errorMessage      String?
+  sentAt            DateTime?
+  createdAt         DateTime           @default(now())
+  attempts          Int                @default(0)
+  maxAttempts       Int                @default(5)
+  nextAttemptAt     DateTime?
+  lastAttemptAt     DateTime?
+  lastResponseStatus Int?
+  lastSafeError     String?
+  deliveredAt       DateTime?
+  terminalFailureAt DateTime?
+  deliveryId        String?            @unique
+
+  @@index([channel, status, nextAttemptAt])
+}
+
+/// Append-only dashboard/admin audit trail. Never store raw secrets or bank details in metadata.
+model AuditLog {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  userId         String?
+  user           User?        @relation(fields: [userId], references: [id])
+  action         String
+  entityType     String?
+  entityId       String?
+  metadata       Json         @default("{}")
+  ipAddress      String?
+  userAgent      String?
+  createdAt      DateTime     @default(now())
+
+  @@index([organizationId, createdAt])
+  @@index([userId])
+  @@index([entityType, entityId])
+}

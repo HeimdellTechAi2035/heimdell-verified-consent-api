@@ -1,0 +1,244 @@
+// Phase 4 — consent certificate generation
+
+import { createHash } from "crypto";
+import type { Client, DirectDebitMandate, Sale, VerificationSession } from "@prisma/client";
+
+// ---------------------------------------------------------------------------
+// Input types
+// ---------------------------------------------------------------------------
+
+/** Evidence collected from the customer at the point of completion. */
+export type CertificateEvidence = {
+  typed_name: string;
+  ip_address: string | null;
+  user_agent: string | null;
+  completed_at: Date;
+  terms_acknowledged: boolean;
+  policies_acknowledged: boolean;
+  cooling_off_acknowledged: boolean;
+  direct_debit_authorised: boolean;
+  evidence_storage_acknowledged: boolean;
+  /** false when AI consent was not part of this verification (field not collected). */
+  ai_consent_confirmed: boolean;
+};
+
+/**
+ * Safe mandate subset — excludes encryptedAccountNumber.
+ * The route should select only these fields when querying.
+ */
+export type SafeMandate = Pick<
+  DirectDebitMandate,
+  "bankName" | "sortCode" | "accountNumberLast4" | "accountHolderName"
+>;
+
+export type CertificateInput = {
+  session: VerificationSession;
+  sale: Sale & {
+    client: Client;
+    directDebitMandate: SafeMandate | null;
+  };
+  evidence: CertificateEvidence;
+};
+
+// ---------------------------------------------------------------------------
+// Certificate builder
+// ---------------------------------------------------------------------------
+
+/**
+ * Build the immutable consent certificate payload.
+ *
+ * Returns the full payload (to be stored as certificateJson) and a
+ * deterministic proofHash over the canonical fields.
+ *
+ * Security:
+ *   - Never includes encryptedAccountNumber or the raw account number.
+ *   - Never includes tokenHash.
+ *   - proofHash is SHA-256 of a sorted canonical field subset.
+ */
+export function createCertificateJson(input: CertificateInput): {
+  payload: Record<string, unknown>;
+  proofHash: string;
+} {
+  const { session, sale, evidence } = input;
+  const dd = sale.directDebitMandate;
+
+  const payload: Record<string, unknown> = {
+    _version: "1",
+    service: "Heimdell Verified Consent API",
+
+    // Session / sale identifiers
+    verification_id: session.id,
+    sale_id: sale.id,
+    client_id: sale.clientId,
+    client_reference: sale.clientReference ?? null,
+    agent_id: sale.agentId ?? null,
+
+    // Customer
+    customer_name: sale.customerName,
+    customer_phone: sale.customerPhone ?? null,
+    customer_email: sale.customerEmail ?? null,
+    customer_address: sale.customerAddress ?? null,
+
+    // Product
+    product_name: sale.productName,
+    subscription_price: sale.productPrice.toString(),
+    subscription_frequency: sale.productFrequency ?? null,
+    terms_summary: sale.productTerms ?? null,
+    policies_summary: sale.productPolicies ?? null,
+    sales_channel: sale.salesChannel ?? null,
+    ai_marketing_opt_in: sale.aiMarketingOptIn ?? null,
+    cooling_off_days: sale.coolingOffDays ?? null,
+
+    // Direct Debit (safe fields only — no full account number)
+    direct_debit_bank_name: dd?.bankName ?? null,
+    direct_debit_sort_code: dd?.sortCode ?? null,
+    direct_debit_account_last4: dd?.accountNumberLast4 ?? null,
+    direct_debit_account_holder: dd?.accountHolderName ?? null,
+
+    // Consent evidence
+    direct_debit_authorised: evidence.direct_debit_authorised,
+    terms_acknowledged: evidence.terms_acknowledged,
+    policies_acknowledged: evidence.policies_acknowledged,
+    cooling_off_acknowledged: evidence.cooling_off_acknowledged,
+    evidence_storage_acknowledged: evidence.evidence_storage_acknowledged,
+    ai_consent_confirmed: evidence.ai_consent_confirmed,
+    typed_name: evidence.typed_name,
+
+    // Audit
+    completed_at: evidence.completed_at.toISOString(),
+    ip_address: evidence.ip_address,
+    user_agent: evidence.user_agent,
+  };
+
+  // Deterministic proof hash — sorted keys so field order doesn't matter.
+  // Excludes mutable/sensitive fields; covers all consent-critical values.
+  const canonicalFields: Record<string, unknown> = {
+    verification_id: payload.verification_id,
+    sale_id: payload.sale_id,
+    client_id: payload.client_id,
+    client_reference: payload.client_reference,
+    customer_name: payload.customer_name,
+    product_name: payload.product_name,
+    subscription_price: payload.subscription_price,
+    subscription_frequency: payload.subscription_frequency,
+    direct_debit_sort_code: payload.direct_debit_sort_code,
+    direct_debit_account_last4: payload.direct_debit_account_last4,
+    direct_debit_authorised: payload.direct_debit_authorised,
+    terms_acknowledged: payload.terms_acknowledged,
+    policies_acknowledged: payload.policies_acknowledged,
+    cooling_off_acknowledged: payload.cooling_off_acknowledged,
+    typed_name: payload.typed_name,
+    completed_at: payload.completed_at,
+    sales_channel: payload.sales_channel,
+    ai_marketing_opt_in: payload.ai_marketing_opt_in,
+    ai_consent_confirmed: payload.ai_consent_confirmed,
+  };
+
+  const sortedCanonical = Object.fromEntries(
+    Object.entries(canonicalFields).sort(([a], [b]) => a.localeCompare(b))
+  );
+
+  const proofHash = createHash("sha256")
+    .update(JSON.stringify(sortedCanonical))
+    .digest("hex");
+
+  return { payload, proofHash };
+}
+
+// ---------------------------------------------------------------------------
+// Safe API response mapper
+// ---------------------------------------------------------------------------
+
+/**
+ * Minimal shape of a Certificate record with the relations needed for the
+ * safe API response. The route must select exactly these fields.
+ *
+ * Security: tokenHash, apiKeyHash, and encryptedAccountNumber must never
+ * be included in the query — they are absent from this type by design.
+ */
+export type CertificateWithRelations = {
+  id: string;
+  verificationSessionId: string;
+  certificateJson: Record<string, unknown>;
+  proofHash: string;
+  createdAt: Date;
+  verificationSession: {
+    id: string;
+    sale: {
+      id: string;
+      clientId: string;
+      clientReference: string | null;
+    };
+  };
+};
+
+export type SafeCertificateResponse = {
+  ok: true;
+  certificate_id: string;
+  verification_session_id: string;
+  sale_id: string;
+  client_reference: string | null;
+  status: "COMPLETED";
+  created_at: string;
+  proof_hash: string;
+  certificate: Record<string, unknown>;
+};
+
+function maskCertificateSortCode(value: unknown): string | null {
+  if (typeof value !== "string" || !value.trim()) {
+    return null;
+  }
+
+  const digits = value.replace(/\D/g, "");
+  if (digits.length < 2) {
+    return "**";
+  }
+
+  return `**-**-${digits.slice(-2)}`;
+}
+
+export function mapCertificateJsonToSafeApiSummary(
+  certificateJson: Record<string, unknown>
+): Record<string, unknown> {
+  const safeCertificate = { ...certificateJson };
+  const directDebitSortCode = safeCertificate.direct_debit_sort_code;
+
+  delete safeCertificate.customer_phone;
+  delete safeCertificate.customer_email;
+  delete safeCertificate.customer_address;
+  delete safeCertificate.direct_debit_bank_name;
+  delete safeCertificate.direct_debit_sort_code;
+  delete safeCertificate.direct_debit_account_holder;
+  delete safeCertificate.ip_address;
+  delete safeCertificate.user_agent;
+
+  return {
+    ...safeCertificate,
+    direct_debit_sort_code_masked: maskCertificateSortCode(
+      directDebitSortCode
+    ),
+  };
+}
+
+/**
+ * Map a Certificate DB record to the safe public API response shape.
+ *
+ * Never exposes: tokenHash, apiKeyHash, encryptedAccountNumber,
+ * raw customer contact details, full bank details, full IP/user-agent,
+ * internal Prisma relation objects, or raw token values.
+ */
+export function mapCertificateToSafeResponse(
+  cert: CertificateWithRelations
+): SafeCertificateResponse {
+  return {
+    ok: true,
+    certificate_id: cert.id,
+    verification_session_id: cert.verificationSessionId,
+    sale_id: cert.verificationSession.sale.id,
+    client_reference: cert.verificationSession.sale.clientReference,
+    status: "COMPLETED",
+    created_at: cert.createdAt.toISOString(),
+    proof_hash: cert.proofHash,
+    certificate: mapCertificateJsonToSafeApiSummary(cert.certificateJson),
+  };
+}

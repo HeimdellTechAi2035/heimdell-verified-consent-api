@@ -1,0 +1,10 @@
+{
+  "confirm_details_correct": true,
+  "confirm_product_price_frequency": true,
+  "confirm_terms": true,
+  "confirm_policies": true,
+  "confirm_cooling_off": true,
+  "authorise_direct_debit": true,
+  "confirm_evidence_storage": true,
+  "typed_name": "Jane Smith"
+}

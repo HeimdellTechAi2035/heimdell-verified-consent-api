@@ -1,0 +1,22 @@
+{
+  "client_reference": "DEMO-001",
+  "customer": {
+    "full_name": "Test Customer",
+    "email": "test@example.com",
+    "phone": "07123456789",
+    "address": "1 Test Street, Preston, PR1 1AA"
+  },
+  "product": {
+    "name": "Demo Broadband Package",
+    "subscription_price": "29.99",
+    "subscription_frequency": "monthly",
+    "subscription_terms_summary": "Demo 12 month broadband contract for testing only.",
+    "policies_summary": "Customer has been informed of the cancellation policy, cooling-off period, and direct debit terms."
+  },
+  "direct_debit": {
+    "bank_name": "Demo Bank",
+    "account_number": "12345678",
+    "sort_code": "112233",
+    "account_holder_name": "Test Customer"
+  }
+}

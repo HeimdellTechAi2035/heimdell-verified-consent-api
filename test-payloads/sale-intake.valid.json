@@ -1,0 +1,23 @@
+{
+  "client_reference": "SALE-1001",
+  "agent_id": "AGENT-22",
+  "customer": {
+    "full_name": "Jane Smith",
+    "phone": "447700900000",
+    "email": "jane@example.com",
+    "address": "1 Example Street, Preston, PR1 1AA"
+  },
+  "product": {
+    "name": "Premium Broadband",
+    "subscription_price": "49.99",
+    "subscription_frequency": "monthly",
+    "subscription_terms_summary": "24-month broadband contract with monthly billing.",
+    "policies_summary": "14-day cooling-off period applies. Standard cancellation and fair usage terms apply."
+  },
+  "direct_debit": {
+    "bank_name": "Barclays",
+    "sort_code": "12-34-56",
+    "account_number": "12345678",
+    "account_holder_name": "Jane Smith"
+  }
+}

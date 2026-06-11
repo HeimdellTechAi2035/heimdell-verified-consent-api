@@ -1,0 +1,23 @@
+# Dependencies
+node_modules/
+
+# Next.js build output
+.next/
+dist/
+
+# Environment variable files — must never be committed
+.env
+.env.local
+.env.*.local
+
+# TypeScript
+*.tsbuildinfo
+
+# Prisma
+.prisma/
+
+# Test coverage
+coverage/
+
+# Local Netlify folder
+.netlify
