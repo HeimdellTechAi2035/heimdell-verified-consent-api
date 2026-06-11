@@ -90,6 +90,14 @@ async function MySalesContent() {
         <DashboardHeader
           title="My Sales"
           subtitle="Your seller workspace for consent verification records."
+          action={
+            <Link
+              href="/dashboard/my-sales/new"
+              className="inline-flex items-center rounded-lg bg-blue-600 px-4 py-2 text-xs font-semibold text-white hover:bg-blue-700"
+            >
+              New Verification
+            </Link>
+          }
         />
 
         {rows.length === 0 ? (

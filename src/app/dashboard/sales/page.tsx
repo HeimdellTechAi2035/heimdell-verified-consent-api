@@ -289,6 +289,14 @@ async function SalesContent({
       <DashboardHeader
         title="Sales"
         subtitle="Live sales submitted via POST /api/v1/sales/intake."
+        action={
+          <Link
+            href="/dashboard/sales/new"
+            className="inline-flex items-center rounded-lg bg-blue-600 px-4 py-2 text-xs font-semibold text-white hover:bg-blue-700"
+          >
+            New Verification
+          </Link>
+        }
       />
 
       {!data ? (
