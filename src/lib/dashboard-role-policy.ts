@@ -63,6 +63,7 @@ const CLIENT_OWNER_AND_PLATFORM_ROLES = [
 export const STAFF_MANAGER_ROLES = [
   "PLATFORM_ADMIN",
   "CLIENT_OWNER",
+  "CLIENT_MANAGER",
   "OWNER",
   "ADMIN",
 ] as const satisfies readonly Role[];

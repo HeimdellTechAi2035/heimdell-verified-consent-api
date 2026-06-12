@@ -6,6 +6,10 @@ import {
   resolveSalePolicySnapshot,
   type CompliancePolicySnapshot,
 } from "@/lib/client-policy";
+import {
+  humanizeConsentEventType,
+  normalizeSaleTermsForEvidence,
+} from "@/lib/sale-evidence-display";
 
 type DashboardCertificateDetailDb = Pick<Prisma.TransactionClient, "certificate">;
 
@@ -178,6 +182,9 @@ export function buildCertificateDetailViewModel(certificate: {
   });
   const isLegacyFallback = Object.keys(policySnapshot).length === 0;
   const policyVersion = resolvedPolicy.policyVersion;
+  const termsEvidence = normalizeSaleTermsForEvidence(
+    sale.productTerms ?? stringFromJson(certificateJson, "terms_summary")
+  );
 
   return {
     id: certificate.id,
@@ -199,12 +206,11 @@ export function buildCertificateDetailViewModel(certificate: {
       productName: sale.productName,
       subscriptionPrice: price,
       subscriptionFrequency: sale.productFrequency,
-      contractLength: null,
+      contractLength: termsEvidence.contractLength,
       salesChannel:
         sale.salesChannel ?? stringFromJson(certificateJson, "sales_channel"),
       priceSummary: `${price}${frequency}`,
-      termsSummary:
-        sale.productTerms ?? stringFromJson(certificateJson, "terms_summary"),
+      termsSummary: termsEvidence.termsSummary,
       policiesSummary:
         sale.productPolicies ??
         stringFromJson(certificateJson, "policies_summary"),
@@ -274,7 +280,7 @@ export function buildCertificateDetailViewModel(certificate: {
         at: certificate.verificationSession.createdAt.toISOString(),
       },
       ...certificate.verificationSession.consentEvents.map((event) => ({
-        type: event.eventType,
+        type: humanizeConsentEventType(event.eventType),
         at: event.createdAt.toISOString(),
       })),
       ...(certificate.verificationSession.completedAt

@@ -9,11 +9,13 @@ import {
 
 export function StaffPasswordResetForm({
   targetUserId,
+  targetOrganizationId,
   targetName,
   targetEmail,
   canReset,
 }: {
   targetUserId: string;
+  targetOrganizationId?: string | null;
   targetName: string | null;
   targetEmail: string;
   targetRole: Role;
@@ -43,12 +45,19 @@ export function StaffPasswordResetForm({
         }}
       >
         <input type="hidden" name="targetUserId" value={targetUserId} />
+        {targetOrganizationId && (
+          <input
+            type="hidden"
+            name="targetOrganizationId"
+            value={targetOrganizationId}
+          />
+        )}
         <button
           type="submit"
           disabled={pending}
           className="text-xs font-semibold text-blue-600 hover:text-blue-800 disabled:cursor-not-allowed disabled:text-gray-300"
         >
-          {pending ? "Resetting..." : "Reset password"}
+          {pending ? "Resetting..." : "Reset temporary password"}
         </button>
       </form>
 
@@ -62,12 +71,24 @@ export function StaffPasswordResetForm({
         <div className="max-w-sm rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
           <p className="font-semibold">Temporary password shown once</p>
           <p className="mt-1">
-            Give this to {state.result.targetName ?? state.result.targetEmail} securely.
-            They will be forced to change it when they next log in.
+            User: <span className="font-semibold">{state.result.targetEmail}</span>
+          </p>
+          <p className="mt-1">
+            Copy this now. It will not be shown again. They must change it
+            after login.
           </p>
           <code className="mt-2 block select-all rounded border border-amber-200 bg-white px-2 py-1 font-mono text-amber-950">
             {state.result.temporaryPassword}
           </code>
+          <p className="mt-2">
+            Login URL:{" "}
+            <a
+              href={state.result.loginUrl}
+              className="font-semibold text-blue-700 underline"
+            >
+              {state.result.loginUrl}
+            </a>
+          </p>
         </div>
       )}
     </div>

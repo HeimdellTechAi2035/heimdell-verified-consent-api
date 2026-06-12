@@ -99,6 +99,7 @@ function VerificationDetail({ detail }: { detail: DashboardVerificationDetail })
         <dl className="grid gap-5 md:grid-cols-2">
           <Field label="Product" value={detail.productName} />
           <Field label="Price" value={detail.priceSummary} />
+          <Field label="Contract length" value={detail.contractLength} />
           <Field label="Terms summary" value={detail.termsSummary} />
           <Field label="Policies summary" value={detail.policiesSummary} />
         </dl>

@@ -2,6 +2,7 @@ import type { Prisma, SaleStatus, VerificationStatus } from "@prisma/client";
 import { db } from "@/lib/db";
 import type { OrganizationContext } from "@/lib/dashboard-auth";
 import { logDashboardTiming, nowMs } from "@/lib/dashboard-performance";
+import { normalizeSaleTermsForEvidence } from "@/lib/sale-evidence-display";
 
 export const DASHBOARD_SALES_PAGE_SIZE = 20;
 
@@ -378,6 +379,7 @@ export async function getDashboardSaleDetail(
   }
 
   const latestSession = sale.verificationSessions[0];
+  const termsEvidence = normalizeSaleTermsForEvidence(sale.productTerms);
 
   return {
     id: sale.id,
@@ -394,7 +396,7 @@ export async function getDashboardSaleDetail(
     monthlyPrice: sale.productPrice.toString(),
     billingFrequency: sale.productFrequency,
     priceSummary: formatPriceSummary(sale.productPrice, sale.productFrequency),
-    contractLength: null,
+    contractLength: termsEvidence.contractLength,
     saleStatus: sale.status,
     latestVerificationStatus: latestSession?.status ?? null,
     latestVerificationId: latestSession?.id ?? null,
@@ -406,7 +408,7 @@ export async function getDashboardSaleDetail(
     certificateId: latestSession?.certificate?.id ?? null,
     createdAt: sale.createdAt.toISOString(),
     updatedAt: sale.updatedAt.toISOString(),
-    termsSummary: sale.productTerms,
+    termsSummary: termsEvidence.termsSummary,
     policiesSummary: sale.productPolicies,
     salesChannel: sale.salesChannel,
     coolingOffDays: sale.coolingOffDays,

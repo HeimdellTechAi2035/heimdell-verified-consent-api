@@ -35,6 +35,7 @@ export type StaffPasswordResetResult = {
   targetName: string | null;
   targetEmail: string;
   temporaryPassword: string;
+  loginUrl: string;
 };
 
 export async function getDashboardStaffRows(): Promise<DashboardStaffRow[]> {
@@ -138,7 +139,7 @@ export function canResetStaffPassword(params: {
     return params.actorUserId !== params.targetUserId;
   }
 
-  if (!["CLIENT_OWNER", "ADMIN"].includes(params.actorRole)) {
+  if (!["CLIENT_OWNER", "CLIENT_MANAGER", "ADMIN"].includes(params.actorRole)) {
     return false;
   }
 
@@ -152,10 +153,21 @@ export function canResetStaffPassword(params: {
 export async function prepareStaffPasswordReset(params: {
   context: OrganizationContext;
   targetUserId: string;
+  targetOrganizationId?: string | null;
 }) {
+  const targetOrganizationId =
+    params.targetOrganizationId?.trim() || params.context.organization.id;
+
+  if (
+    targetOrganizationId !== params.context.organization.id &&
+    !isPlatformDashboardRole(params.context.membership.role)
+  ) {
+    throw new Error("staff_reset_not_allowed");
+  }
+
   const membership = await db.organizationMembership.findFirst({
     where: {
-      organizationId: params.context.organization.id,
+      organizationId: targetOrganizationId,
       userId: params.targetUserId,
     },
     select: {
@@ -194,6 +206,7 @@ export async function prepareStaffPasswordReset(params: {
   }
 
   return {
+    targetOrganizationId,
     targetUser: {
       ...membership.user,
       externalAuthId,

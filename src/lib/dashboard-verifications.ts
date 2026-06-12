@@ -2,6 +2,7 @@ import type { Prisma, VerificationStatus } from "@prisma/client";
 import { db } from "@/lib/db";
 import type { OrganizationContext } from "@/lib/dashboard-auth";
 import { logDashboardTiming, nowMs } from "@/lib/dashboard-performance";
+import { normalizeSaleTermsForEvidence } from "@/lib/sale-evidence-display";
 
 export const DASHBOARD_VERIFICATIONS_PAGE_SIZE = 20;
 
@@ -34,6 +35,7 @@ export type DashboardVerificationRow = {
 export type DashboardVerificationDetail = DashboardVerificationRow & {
   customerAddress: string | null;
   openedAt: string | null;
+  contractLength: string | null;
   termsSummary: string | null;
   policiesSummary: string | null;
 };
@@ -312,6 +314,8 @@ export async function getDashboardVerificationDetail(
     return null;
   }
 
+  const termsEvidence = normalizeSaleTermsForEvidence(session.sale.productTerms);
+
   return {
     id: session.id,
     saleId: session.sale.id,
@@ -335,7 +339,8 @@ export async function getDashboardVerificationDetail(
     completedAt: session.completedAt?.toISOString() ?? null,
     declinedAt: session.declinedAt?.toISOString() ?? null,
     certificateId: session.certificate?.id ?? null,
-    termsSummary: session.sale.productTerms,
+    contractLength: termsEvidence.contractLength,
+    termsSummary: termsEvidence.termsSummary,
     policiesSummary: session.sale.productPolicies,
   };
 }

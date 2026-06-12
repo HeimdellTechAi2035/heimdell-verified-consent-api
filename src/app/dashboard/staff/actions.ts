@@ -1,5 +1,6 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { requireDashboardRole } from "@/lib/dashboard-auth";
 import { logDashboardAuditEvent } from "@/lib/dashboard-audit";
 import {
@@ -27,6 +28,9 @@ export async function resetStaffPasswordAction(
 ): Promise<StaffPasswordResetActionResult> {
   const context = await requireDashboardRole(STAFF_MANAGER_ROLES);
   const targetUserId = String(formData.get("targetUserId") ?? "").trim();
+  const targetOrganizationId = String(
+    formData.get("targetOrganizationId") ?? ""
+  ).trim();
 
   if (!targetUserId) {
     return { ok: false, message: "Select a staff user to reset." };
@@ -38,6 +42,7 @@ export async function resetStaffPasswordAction(
     resetTarget = await prepareStaffPasswordReset({
       context,
       targetUserId,
+      targetOrganizationId: targetOrganizationId || null,
     });
   } catch (error) {
     return {
@@ -60,7 +65,7 @@ export async function resetStaffPasswordAction(
     if (error) {
       console.error("[staff-password-reset] Supabase password update failed", {
         targetUserId: resetTarget.targetUser.id,
-        organizationId: context.organization.id,
+        organizationId: resetTarget.targetOrganizationId,
         message: error.message,
         status: error.status,
         name: error.name,
@@ -74,7 +79,7 @@ export async function resetStaffPasswordAction(
   } catch (error) {
     console.error("[staff-password-reset] Supabase admin setup failed", {
       targetUserId: resetTarget.targetUser.id,
-      organizationId: context.organization.id,
+      organizationId: resetTarget.targetOrganizationId,
       message: error instanceof Error ? error.message : "Unknown error",
     });
 
@@ -90,7 +95,7 @@ export async function resetStaffPasswordAction(
     });
 
     await logDashboardAuditEvent({
-      organizationId: context.organization.id,
+      organizationId: resetTarget.targetOrganizationId,
       userId: context.user.id,
       action: "staff_password_reset",
       entityType: "user",
@@ -100,10 +105,13 @@ export async function resetStaffPasswordAction(
         targetRole: resetTarget.targetRole,
       },
     });
+
+    revalidatePath("/dashboard/staff");
+    revalidatePath(`/dashboard/clients/${resetTarget.targetOrganizationId}`);
   } catch (error) {
     console.error("[staff-password-reset] Internal reset update failed", {
       targetUserId: resetTarget.targetUser.id,
-      organizationId: context.organization.id,
+      organizationId: resetTarget.targetOrganizationId,
       message: error instanceof Error ? error.message : "Unknown error",
     });
 
@@ -121,8 +129,14 @@ export async function resetStaffPasswordAction(
       targetName: resetTarget.targetUser.name,
       targetEmail: resetTarget.targetUser.email,
       temporaryPassword,
+      loginUrl: buildLoginUrl(),
     },
   };
+}
+
+function buildLoginUrl(): string {
+  const appUrl = process.env.APP_URL?.trim().replace(/\/$/, "");
+  return appUrl ? `${appUrl}/login` : "/login";
 }
 
 function getResetErrorMessage(error: unknown): string {

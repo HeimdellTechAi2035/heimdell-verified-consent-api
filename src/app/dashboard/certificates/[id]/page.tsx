@@ -411,6 +411,9 @@ async function CertificateDetailContent({
   const saleHref = result.isSeller
     ? `/dashboard/my-sales/${encodeURIComponent(detail?.sale.id ?? "")}`
     : `/dashboard/sales/${encodeURIComponent(detail?.sale.id ?? "")}`;
+  const pdfHref = detail
+    ? `/dashboard/certificates/${encodeURIComponent(detail.id)}/pdf`
+    : "";
 
   return (
     <>
@@ -438,12 +441,23 @@ async function CertificateDetailContent({
               Download is available only through this authenticated dashboard
               route and contains the same safe evidence summary shown below.
             </p>
-            <Link
-              href={`/dashboard/certificates/${encodeURIComponent(detail.id)}/pdf`}
-              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white"
-            >
-              Download PDF
-            </Link>
+            <div className="flex flex-col gap-1">
+              <a
+                href={pdfHref}
+                download={`heimdell-certificate-${detail.id}.pdf`}
+                className="rounded-lg bg-blue-600 px-4 py-2 text-center text-sm font-semibold text-white"
+              >
+                Download PDF
+              </a>
+              <a
+                href={pdfHref}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-center text-xs font-semibold text-blue-700 underline"
+              >
+                Open PDF if download does not start
+              </a>
+            </div>
             <Link
               href={saleHref}
               className="rounded-lg border border-blue-200 bg-white px-4 py-2 text-sm font-semibold text-blue-700"

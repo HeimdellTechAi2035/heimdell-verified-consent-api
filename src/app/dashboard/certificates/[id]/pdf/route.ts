@@ -27,6 +27,8 @@ export async function GET(_request: Request, { params }: Params) {
   try {
     const detail = await getDashboardCertificateDetail(context, id);
     const pdf = createCertificatePdf(detail);
+    const pdfBytes = Buffer.from(pdf.bytes);
+    const filename = `heimdell-certificate-${detail.id}.pdf`;
 
     logDashboardAuditEvent({
       organizationId: context.organization.id,
@@ -41,12 +43,13 @@ export async function GET(_request: Request, { params }: Params) {
       // Audit logging must not expose certificate content or block export.
     });
 
-    return new Response(Buffer.from(pdf.bytes), {
+    return new Response(pdfBytes, {
       status: 200,
       headers: {
         "Content-Type": "application/pdf",
-        "Content-Disposition": `attachment; filename="${pdf.filename}"`,
-        "Cache-Control": "no-store, private",
+        "Content-Disposition": `attachment; filename="${filename}"`,
+        "Cache-Control": "no-store",
+        "Content-Length": String(pdfBytes.byteLength),
         "X-Content-Type-Options": "nosniff",
       },
     });

@@ -119,6 +119,7 @@ function SaleDetail({ detail }: { detail: DashboardSaleDetail }) {
         <dl className="grid gap-5 md:grid-cols-3">
           <Field label="Product" value={detail.productName} />
           <Field label="Price" value={detail.priceSummary} />
+          <Field label="Contract length" value={detail.contractLength} />
           <Field label="Sales channel" value={detail.salesChannel} />
           <div>
             <dt className="text-xs font-semibold uppercase tracking-wide text-gray-400">Sale status</dt>

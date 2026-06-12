@@ -6,9 +6,11 @@ import { DashboardCard } from "@/components/dashboard/DashboardCard";
 import { DashboardHeader } from "@/components/dashboard/DashboardHeader";
 import { DashboardRoleGate } from "@/components/dashboard/DashboardRoleGate";
 import { DataTable, type DataTableColumn } from "@/components/dashboard/DataTable";
+import { StaffPasswordResetForm } from "@/components/dashboard/StaffPasswordResetForm";
 import { StatusBadge } from "@/components/dashboard/StatusBadge";
 import { requireDashboardRole } from "@/lib/dashboard-auth";
 import { getAllowedDashboardRoles } from "@/lib/dashboard-role-policy";
+import { canResetStaffPassword } from "@/lib/dashboard-staff";
 import {
   getPlatformClientSetupDetail,
   type ClientSetupApiKeyRow,
@@ -106,43 +108,67 @@ function DetailRow({
   );
 }
 
-const USER_COLUMNS: DataTableColumn<ClientSetupUserRow>[] = [
-  {
-    header: "User",
-    cell: (row) => (
-      <div>
-        <p className="text-sm font-medium text-gray-900">
-          {row.name ?? "Name not recorded"}
-        </p>
-        <p className="text-xs text-gray-500">{row.email}</p>
-      </div>
-    ),
-  },
-  {
-    header: "Role",
-    cell: (row) => <StatusBadge status={row.role} />,
-  },
-  {
-    header: "Membership",
-    cell: () => <StatusBadge status="ACTIVE" />,
-  },
-  {
-    header: "Password",
-    cell: (row) => (
-      <span className="text-xs text-gray-500">
-        {row.mustChangePassword ? "Must change password" : "Changed"}
-      </span>
-    ),
-  },
-  {
-    header: "Created",
-    cell: (row) => (
-      <span className="text-xs text-gray-500 whitespace-nowrap">
-        {formatDateTime(row.createdAt)}
-      </span>
-    ),
-  },
-];
+function buildUserColumns(params: {
+  actorUserId: string;
+  actorRole: ClientSetupUserRow["role"];
+  targetOrganizationId: string;
+}): DataTableColumn<ClientSetupUserRow>[] {
+  return [
+    {
+      header: "User",
+      cell: (row) => (
+        <div>
+          <p className="text-sm font-medium text-gray-900">
+            {row.name ?? "Name not recorded"}
+          </p>
+          <p className="text-xs text-gray-500">{row.email}</p>
+        </div>
+      ),
+    },
+    {
+      header: "Role",
+      cell: (row) => <StatusBadge status={row.role} />,
+    },
+    {
+      header: "Membership",
+      cell: () => <StatusBadge status="ACTIVE" />,
+    },
+    {
+      header: "Password",
+      cell: (row) => (
+        <span className="text-xs text-gray-500">
+          {row.mustChangePassword ? "Must change password" : "Changed"}
+        </span>
+      ),
+    },
+    {
+      header: "Created",
+      cell: (row) => (
+        <span className="text-xs text-gray-500 whitespace-nowrap">
+          {formatDateTime(row.createdAt)}
+        </span>
+      ),
+    },
+    {
+      header: "Actions",
+      cell: (row) => (
+        <StaffPasswordResetForm
+          targetUserId={row.id}
+          targetOrganizationId={params.targetOrganizationId}
+          targetName={row.name}
+          targetEmail={row.email}
+          targetRole={row.role}
+          canReset={canResetStaffPassword({
+            actorRole: params.actorRole,
+            targetRole: row.role,
+            actorUserId: params.actorUserId,
+            targetUserId: row.id,
+          })}
+        />
+      ),
+    },
+  ];
+}
 
 const API_KEY_COLUMNS: DataTableColumn<ClientSetupApiKeyRow>[] = [
   {
@@ -223,6 +249,12 @@ async function ClientDetailContent({ organizationId }: { organizationId: string 
   if (!detail) {
     notFound();
   }
+
+  const userColumns = buildUserColumns({
+    actorUserId: context.user.id,
+    actorRole: context.membership.role,
+    targetOrganizationId: detail.organization.id,
+  });
 
   return (
     <>
@@ -325,7 +357,7 @@ async function ClientDetailContent({ organizationId }: { organizationId: string 
         <SectionCard title="Client Admins">
           {detail.admins.length > 0 ? (
             <DataTable
-              columns={USER_COLUMNS}
+              columns={userColumns}
               rows={detail.admins}
               footer="Showing client owner/admin membership metadata only."
             />
@@ -340,7 +372,7 @@ async function ClientDetailContent({ organizationId }: { organizationId: string 
           </div>
           {detail.staff.length > 0 ? (
             <DataTable
-              columns={USER_COLUMNS}
+              columns={userColumns}
               rows={detail.staff}
               footer="Showing staff membership metadata only."
             />
