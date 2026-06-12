@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import Link from "next/link";
 import { useActionState, useState } from "react";
@@ -170,7 +170,7 @@ function SuccessPanel({
         </p>
         <p className="mt-1 text-xs text-green-800">
           Status Pending. Share the secure link with the customer now; the raw
-          token is only shown inside this one-time verification URL.
+          secure link is only shown on this success screen.
         </p>
       </div>
 

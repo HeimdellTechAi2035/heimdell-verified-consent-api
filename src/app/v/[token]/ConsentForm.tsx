@@ -162,6 +162,14 @@ function SuccessScreen({
   );
 }
 
+function PolicyText({ children }: { children: string }) {
+  return (
+    <p className="whitespace-pre-wrap text-sm leading-relaxed text-gray-700">
+      {children}
+    </p>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Main consent form
 // ---------------------------------------------------------------------------
@@ -170,7 +178,7 @@ export function ConsentForm({ data }: { data: SessionLookupData }) {
   const params = useParams();
   const token = params.token as string;
 
-  const { customer, product, direct_debit } = data;
+  const { customer, product, direct_debit, policy_snapshot } = data;
 
   // Derived flags — computed once from props, used throughout.
   const aiConsentRequired = data.ai_marketing_opt_in !== null;
@@ -450,6 +458,22 @@ export function ConsentForm({ data }: { data: SessionLookupData }) {
           </Section>
         )}
 
+        <Section title="Terms and Conditions">
+          <PolicyText>{policy_snapshot.termsAndConditions}</PolicyText>
+        </Section>
+
+        <Section title="Cooling-off Policy">
+          <PolicyText>{policy_snapshot.coolingOffPolicy}</PolicyText>
+        </Section>
+
+        <Section title="Cancellation Instructions">
+          <PolicyText>{policy_snapshot.cancellationInstructions}</PolicyText>
+        </Section>
+
+        <Section title="Privacy and Evidence Storage">
+          <PolicyText>{policy_snapshot.privacyEvidenceWording}</PolicyText>
+        </Section>
+
         {/* Direct Debit */}
         {direct_debit && (
           <Section title="Direct Debit Details">
@@ -474,6 +498,23 @@ export function ConsentForm({ data }: { data: SessionLookupData }) {
             </div>
           </Section>
         )}
+
+        <Section title="Direct Debit Guarantee">
+          <PolicyText>
+            {policy_snapshot.directDebitGuaranteeWording}
+          </PolicyText>
+        </Section>
+
+        <Section title="Policy Version">
+          <Row label="Version" value={policy_snapshot.policyVersion} />
+          <Row
+            label="Captured"
+            value={new Date(policy_snapshot.capturedAt).toLocaleString("en-GB", {
+              dateStyle: "medium",
+              timeStyle: "short",
+            })}
+          />
+        </Section>
 
         {/* Consent confirmations */}
         <Section title="Your Consent">

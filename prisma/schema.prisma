@@ -55,6 +55,7 @@ enum NotificationChannel {
 enum NotificationStatus {
   PENDING
   QUEUED
+  SENDING
   SENT
   SKIPPED
   FAILED
@@ -217,6 +218,7 @@ model Sale {
   productFrequency String?
   productTerms     String?
   productPolicies  String?
+  policySnapshot    Json?
 
   // Sale context
   salesChannel     String?  // door_to_door | phone | in_store | online | field_sales | other
@@ -313,6 +315,12 @@ model ClientPolicy {
   termsAndConditions String?
   /// Cancellation policy text displayed to the customer.
   cancellationPolicy String?
+  /// Privacy and evidence storage text displayed to the customer.
+  privacyEvidenceWording String?
+  /// Direct Debit Guarantee wording displayed to the customer.
+  directDebitGuaranteeWording String?
+  /// Human-readable policy version captured into each sale snapshot.
+  policyVersion String @default("v1")
   /// JSON array of extra consent checkbox label strings.
   customConsentItems Json    @default("[]")
 
@@ -329,10 +337,16 @@ model Notification {
   channel           NotificationChannel
   recipient         String
   status            NotificationStatus @default(PENDING)
+  notificationType  String?
+  subject           String?
+  messagePreview    String?
   providerId        String?
+  providerMessageId String?
   errorMessage      String?
   sentAt            DateTime?
+  failedAt          DateTime?
   createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
   attempts          Int                @default(0)
   maxAttempts       Int                @default(5)
   nextAttemptAt     DateTime?

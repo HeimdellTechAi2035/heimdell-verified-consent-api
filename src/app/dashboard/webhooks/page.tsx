@@ -1,4 +1,4 @@
-// Dashboard -- Webhooks page.
+﻿// Dashboard -- Webhooks page.
 // Live tenant-scoped outbound webhook delivery metadata.
 
 import Link from "next/link";
@@ -197,7 +197,7 @@ function LiveDataIndicator() {
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
       </svg>
       <p className="text-sm text-green-800">
-        <span className="font-semibold">Live tenant-scoped data.</span>{" "}
+        <span className="font-semibold">Secure company data.</span>{" "}
         Webhook delivery metadata is loaded server-side for your organization only.
         Secrets, payloads, raw headers, customer data, and payment details are not shown.
       </p>
@@ -273,7 +273,7 @@ function PaginationControls({ data }: { data: DashboardWebhooksData }) {
   return (
     <div className="mt-4 flex items-center justify-between gap-4 text-xs text-gray-500">
       <span>
-        Page {data.pagination.page} of {data.pagination.totalPages} ·{" "}
+        Page {data.pagination.page} of {data.pagination.totalPages} Â·{" "}
         {data.pagination.totalRows} webhook deliveries
       </span>
       <div className="flex items-center gap-2">
@@ -359,7 +359,7 @@ async function WebhooksContent({
               <DataTable
                 columns={COLUMNS}
                 rows={data.rows}
-                footer="Showing safe tenant-scoped webhook delivery metadata only. Retry, detail, and endpoint edit actions are placeholders."
+                footer="Showing safe webhook delivery status only. Setup and retry options appear when they are available."
               />
               <PaginationControls data={data} />
             </>

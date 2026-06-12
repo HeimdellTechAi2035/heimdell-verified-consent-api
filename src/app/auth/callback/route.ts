@@ -1,4 +1,8 @@
 import { redirect } from "next/navigation";
+import {
+  getPostLoginDashboardDestination,
+  revalidateDashboardAuthPaths,
+} from "@/lib/dashboard-redirects";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 
 export async function GET(request: Request) {
@@ -16,5 +20,16 @@ export async function GET(request: Request) {
     redirect("/login?error=signin-failed");
   }
 
-  redirect("/dashboard");
+  const { data } = await supabase.auth.getUser();
+
+  if (!data.user) {
+    redirect("/login?error=session-expired");
+  }
+
+  revalidateDashboardAuthPaths();
+  const destination = await getPostLoginDashboardDestination({
+    externalAuthId: data.user.id,
+  });
+
+  redirect(destination);
 }

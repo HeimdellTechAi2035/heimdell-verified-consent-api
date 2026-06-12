@@ -1,85 +1,226 @@
-﻿// Dashboard -- Notifications page (Phase 12C).
-// Placeholder table: connects to database in a future phase.
-
-import { DevelopmentPreviewBanner } from "@/components/dashboard/DevelopmentPreviewBanner";
+﻿import Link from "next/link";
 import { DashboardHeader } from "@/components/dashboard/DashboardHeader";
 import { DashboardRoleGate } from "@/components/dashboard/DashboardRoleGate";
 import { StatusBadge } from "@/components/dashboard/StatusBadge";
 import { DataTable, type DataTableColumn } from "@/components/dashboard/DataTable";
+import { requireOrganizationMembership } from "@/lib/dashboard-auth";
+import {
+  getDashboardNotificationsData,
+  normalizeDashboardNotificationStatus,
+  type DashboardNotificationRow,
+} from "@/lib/dashboard-notifications";
+
+type NotificationsPageProps = {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+};
 
 const CHANNEL_STYLES: Record<string, string> = {
-  SMS:      "bg-blue-100 text-blue-700",
-  EMAIL:    "bg-violet-100 text-violet-700",
+  SMS: "bg-blue-100 text-blue-700",
+  EMAIL: "bg-violet-100 text-violet-700",
   WHATSAPP: "bg-green-100 text-green-700",
-  WEBHOOK:  "bg-orange-100 text-orange-700",
+  WEBHOOK: "bg-orange-100 text-orange-700",
 };
 
-type NotifRow = {
-  channel:   string;
-  recipient: string;
-  status:    string;
-  event:     string;
-  created:   string;
-};
+function firstQueryValue(value: string | string[] | undefined) {
+  return Array.isArray(value) ? value[0] : value;
+}
 
-const PLACEHOLDER_ROWS: NotifRow[] = [
-  { channel: "SMS",     recipient: "+447700900001",            status: "QUEUED",  event: "verification.link_created", created: "2026-05-20 14:00" },
-  { channel: "WEBHOOK", recipient: "https://crm.example.com", status: "QUEUED",  event: "verification.completed",    created: "2026-05-20 14:08" },
-  { channel: "WEBHOOK", recipient: "https://crm.example.com", status: "QUEUED",  event: "certificate.created",       created: "2026-05-20 14:08" },
-  { channel: "SMS",     recipient: "N/A",                      status: "SKIPPED", event: "verification.link_created", created: "2026-05-19 10:00" },
-];
+function formatDateTime(value: string | null) {
+  if (!value) {
+    return "Not recorded";
+  }
 
-const COLUMNS: DataTableColumn<NotifRow>[] = [
-  { header: "Channel",   cell: (r) => (
+  return new Date(value).toLocaleString("en-GB", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
+}
+
+const COLUMNS: DataTableColumn<DashboardNotificationRow>[] = [
+  {
+    header: "Channel",
+    cell: (r) => (
       <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${CHANNEL_STYLES[r.channel] ?? "bg-gray-100 text-gray-600"}`}>
         {r.channel}
       </span>
-    )
+    ),
   },
-  { header: "Recipient", cell: (r) => <span className="font-mono text-xs text-gray-600 truncate block max-w-[180px]">{r.recipient}</span> },
-  { header: "Event",     cell: (r) => <span className="font-mono text-xs text-gray-500">{r.event}</span> },
-  { header: "Status",    cell: (r) => <StatusBadge status={r.status} /> },
-  { header: "Created",   cell: (r) => <span className="text-xs text-gray-500">{r.created}</span> },
-  { header: "Action",    cell: () => (
-      <button disabled className="text-xs text-blue-400 cursor-not-allowed" title="Notification detail view is not available yet">
-        View
-      </button>
-    )
+  {
+    header: "Recipient",
+    cell: (r) => (
+      <div>
+        <p className="font-mono text-xs text-gray-600 truncate max-w-[220px]">
+          {r.recipient}
+        </p>
+        <p className="mt-0.5 text-xs text-gray-400">{r.customerName}</p>
+      </div>
+    ),
+  },
+  {
+    header: "Type",
+    cell: (r) => (
+      <div>
+        <p className="text-xs font-semibold text-gray-700">{r.notificationType}</p>
+        <p className="mt-0.5 text-xs text-gray-400">{r.subject ?? "No subject"}</p>
+      </div>
+    ),
+  },
+  {
+    header: "Status",
+    cell: (r) => (
+      <div className="space-y-1">
+        <StatusBadge status={r.status} />
+        {r.nextAttemptAt && (
+          <p className="text-xs text-amber-700">
+            Retry scheduled {formatDateTime(r.nextAttemptAt)}
+          </p>
+        )}
+      </div>
+    ),
+  },
+  {
+    header: "Preview / error",
+    cell: (r) => (
+      <div className="max-w-[260px]">
+        <p className="truncate text-xs text-gray-600">
+          {r.messagePreview ?? "No preview stored"}
+        </p>
+        {r.safeError && (
+          <p className="mt-1 truncate text-xs text-red-600">{r.safeError}</p>
+        )}
+      </div>
+    ),
+  },
+  {
+    header: "Attempts",
+    cell: (r) => (
+      <span className="text-xs text-gray-500">
+        {r.attempts}/{r.maxAttempts}
+      </span>
+    ),
+  },
+  {
+    header: "Created",
+    cell: (r) => (
+      <span className="text-xs text-gray-500 whitespace-nowrap">
+        {formatDateTime(r.createdAt)}
+      </span>
+    ),
+  },
+  {
+    header: "Sent/Failed",
+    cell: (r) => (
+      <span className="text-xs text-gray-500 whitespace-nowrap">
+        {formatDateTime(r.sentAt ?? r.failedAt)}
+      </span>
+    ),
+  },
+  {
+    header: "Related",
+    cell: (r) => (
+      <div className="flex flex-col gap-1">
+        <Link
+          className="text-xs font-semibold text-blue-600"
+          href={`/dashboard/sales/${encodeURIComponent(r.saleId)}`}
+        >
+          View sale
+        </Link>
+        {r.verificationSessionId && (
+          <Link
+            className="text-xs font-semibold text-gray-600"
+            href={`/dashboard/verifications/${encodeURIComponent(r.verificationSessionId)}`}
+          >
+            View verification
+          </Link>
+        )}
+        {r.certificateId && (
+          <Link
+            className="text-xs font-semibold text-green-700"
+            href={`/dashboard/certificates/${encodeURIComponent(r.certificateId)}`}
+          >
+            View certificate
+          </Link>
+        )}
+      </div>
+    ),
   },
 ];
 
-export default function NotificationsPage() {
+function EmptyState() {
   return (
-    <DashboardRoleGate section="notifications">
-      <DevelopmentPreviewBanner
-        message="Live notification log records will appear once PostgreSQL is connected."
-      />
+    <div className="rounded-xl border border-gray-200 bg-white p-8 text-center shadow-sm">
+      <h3 className="text-sm font-semibold text-gray-900">
+        No notifications yet
+      </h3>
+      <p className="mx-auto mt-2 max-w-lg text-sm leading-relaxed text-gray-500">
+        Notification records will appear after verification links are created,
+        customers complete or decline verification, or webhooks are queued.
+      </p>
+    </div>
+  );
+}
 
+async function NotificationsContent({
+  searchParams,
+}: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const resolvedSearchParams = (await searchParams) ?? {};
+  const status = normalizeDashboardNotificationStatus(
+    firstQueryValue(resolvedSearchParams.status)
+  );
+  const context = await requireOrganizationMembership();
+  const rows = await getDashboardNotificationsData(context, { status });
+
+  return (
+    <>
       <DashboardHeader
         title="Notifications"
-        subtitle="SMS, email, WhatsApp, and webhook delivery log. Nothing is sent yet -- a delivery worker will process QUEUED records when providers are connected."
+        subtitle="Customer delivery and webhook notification tracking for this organization."
       />
 
-      {/* Channel legend */}
-      <div className="flex flex-wrap gap-3 mb-5">
+      <div className="mb-5 flex flex-wrap gap-3">
         {[
-          { status: "QUEUED",  label: "Queued - ready for delivery worker" },
-          { status: "SENT",    label: "Sent successfully" },
-          { status: "FAILED",  label: "Delivery failed" },
-          { status: "SKIPPED", label: "Skipped - missing recipient or secret" },
-        ].map(({ status, label }) => (
-          <div key={status} className="flex items-center gap-1.5 text-xs text-gray-500">
-            <StatusBadge status={status} />
-            <span>{label}</span>
-          </div>
+          ["", "All"],
+          ["QUEUED", "Pending"],
+          ["SENDING", "Sending"],
+          ["SENT", "Sent"],
+          ["FAILED", "Failed"],
+          ["SKIPPED", "Skipped"],
+        ].map(([value, label]) => (
+          <Link
+            key={value || "all"}
+            href={value ? `/dashboard/notifications?status=${value}` : "/dashboard/notifications"}
+            className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${
+              status === value || (!status && !value)
+                ? "border-blue-200 bg-blue-50 text-blue-700"
+                : "border-gray-200 bg-white text-gray-600"
+            }`}
+          >
+            {label}
+          </Link>
         ))}
       </div>
 
-      <DataTable
-        columns={COLUMNS}
-        rows={PLACEHOLDER_ROWS}
-        footer="Showing development placeholder rows -- not from database. Real records are written by the notification layer after each verification event."
-      />
+      {rows.length === 0 ? (
+        <EmptyState />
+      ) : (
+        <DataTable
+          columns={COLUMNS}
+          rows={rows}
+          footer="Showing safe notification fields only. Provider secrets, secure link internals, and full payment details are never shown."
+        />
+      )}
+    </>
+  );
+}
+
+export default function NotificationsPage({
+  searchParams,
+}: NotificationsPageProps) {
+  return (
+    <DashboardRoleGate section="notifications">
+      <NotificationsContent searchParams={searchParams} />
     </DashboardRoleGate>
   );
 }

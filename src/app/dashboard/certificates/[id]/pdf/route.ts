@@ -17,6 +17,7 @@ const CERTIFICATE_EXPORT_ROLES = [
   "ADMIN",
   "MANAGER",
   "COMPLIANCE_VIEWER",
+  "SELLER",
 ] as const;
 
 export async function GET(_request: Request, { params }: Params) {

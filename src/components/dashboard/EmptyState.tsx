@@ -1,4 +1,4 @@
-// EmptyState - shown when a protected dashboard section has no records to display.
+﻿// EmptyState - shown when a protected dashboard section has no records to display.
 
 export function EmptyState({
   title = "No data yet",
@@ -48,7 +48,7 @@ export function EmptyState({
           />
         </svg>
         <p className="text-xs text-amber-700 font-medium">
-          No matching tenant-scoped records
+          No matching records
         </p>
       </div>
     </div>

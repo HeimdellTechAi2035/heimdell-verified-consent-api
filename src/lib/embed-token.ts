@@ -1,6 +1,9 @@
 import { createHmac, randomBytes, timingSafeEqual } from "crypto";
 
-export type EmbedTokenScope = "verification_status" | "deal_status";
+export type EmbedTokenScope =
+  | "verification_status"
+  | "deal_status"
+  | "verification_create";
 
 export type EmbedTokenClaims = {
   version: 1;

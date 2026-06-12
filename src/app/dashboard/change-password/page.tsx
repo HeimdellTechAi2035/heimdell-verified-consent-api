@@ -21,6 +21,23 @@ const ERROR_MESSAGES: Record<string, string> = {
   "password-update-failed": "Supabase could not update the password. Try a stronger password.",
 };
 
+function BlockedState({
+  title,
+  message,
+}: {
+  title: string;
+  message: string;
+}) {
+  return (
+    <div className="rounded-xl border border-amber-200 bg-white p-8 text-center shadow-sm">
+      <h1 className="text-base font-semibold text-gray-900">{title}</h1>
+      <p className="mx-auto mt-2 max-w-lg text-sm leading-relaxed text-gray-500">
+        {message}
+      </p>
+    </div>
+  );
+}
+
 export default async function ChangePasswordPage({ searchParams }: Props) {
   const state = await getDashboardAccessState();
 
@@ -28,8 +45,31 @@ export default async function ChangePasswordPage({ searchParams }: Props) {
     redirect("/login");
   }
 
+  if (state.status === "missing_user_mapping") {
+    return (
+      <BlockedState
+        title="Dashboard user not configured"
+        message="Your login session is valid, but no Heimdell dashboard user is linked to this identity yet."
+      />
+    );
+  }
+
+  if (state.status === "missing_membership") {
+    return (
+      <BlockedState
+        title="No organization access configured"
+        message="Your dashboard user exists, but it has not been assigned to an organization yet."
+      />
+    );
+  }
+
   if (state.status !== "authenticated") {
-    return null;
+    return (
+      <BlockedState
+        title="Dashboard access unavailable"
+        message="Your session is active, but this page cannot confirm dashboard access right now. Sign out and sign in again if the problem continues."
+      />
+    );
   }
 
   if (state.status === "authenticated" && !state.context.user.mustChangePassword) {

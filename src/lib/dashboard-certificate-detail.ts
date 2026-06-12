@@ -2,6 +2,10 @@ import type { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import type { OrganizationContext } from "@/lib/dashboard-auth";
 import { createProofHashFingerprint } from "@/lib/dashboard-certificates";
+import {
+  resolveSalePolicySnapshot,
+  type CompliancePolicySnapshot,
+} from "@/lib/client-policy";
 
 type DashboardCertificateDetailDb = Pick<Prisma.TransactionClient, "certificate">;
 
@@ -15,9 +19,20 @@ export type DashboardCertificateDetail = {
   createdAt: string;
   sale: {
     id: string;
+    clientCompanyName: string;
     clientReference: string;
     status: string;
+    sellerName: string | null;
+    sellerEmail: string | null;
+    customerName: string;
+    customerPhone: string | null;
+    customerEmail: string | null;
+    customerAddress: string | null;
     productName: string;
+    subscriptionPrice: string;
+    subscriptionFrequency: string | null;
+    contractLength: string | null;
+    salesChannel: string | null;
     priceSummary: string;
     termsSummary: string | null;
     policiesSummary: string | null;
@@ -30,15 +45,23 @@ export type DashboardCertificateDetail = {
     completedAt: string | null;
     declinedAt: string | null;
     expiresAt: string;
+    customerIpAddress: string | null;
+    customerUserAgent: string | null;
+  };
+  policy: CompliancePolicySnapshot & {
+    isLegacyFallback: boolean;
   };
   confirmations: Array<{
     label: string;
     value: boolean | string | null;
   }>;
   paymentSummary: {
+    bankName: string | null;
     accountEnding: string | null;
     sortCodeMasked: string | null;
+    accountHolderName: string | null;
   };
+  policyVersion: string | null;
   timeline: Array<{
     type: string;
     at: string;
@@ -105,8 +128,21 @@ export function buildCertificateDetailViewModel(certificate: {
       productFrequency: string | null;
       productTerms: string | null;
       productPolicies: string | null;
+      policySnapshot: Prisma.JsonValue | null;
+      salesChannel: string | null;
       coolingOffDays: number | null;
       status: string;
+      customerName: string;
+      customerPhone: string | null;
+      customerEmail: string | null;
+      customerAddress: string | null;
+      client: {
+        name: string;
+      };
+      submittedByUser: {
+        name: string | null;
+        email: string;
+      } | null;
     };
   };
 }): DashboardCertificateDetail {
@@ -128,6 +164,20 @@ export function buildCertificateDetailViewModel(certificate: {
     certificateJson,
     "direct_debit_account_last4"
   );
+  const policySnapshot =
+    sale.policySnapshot &&
+    typeof sale.policySnapshot === "object" &&
+    !Array.isArray(sale.policySnapshot)
+      ? (sale.policySnapshot as Record<string, unknown>)
+      : {};
+  const resolvedPolicy = resolveSalePolicySnapshot({
+    policySnapshot: sale.policySnapshot,
+    productTerms: sale.productTerms,
+    productPolicies: sale.productPolicies,
+    coolingOffDays: sale.coolingOffDays,
+  });
+  const isLegacyFallback = Object.keys(policySnapshot).length === 0;
+  const policyVersion = resolvedPolicy.policyVersion;
 
   return {
     id: certificate.id,
@@ -137,9 +187,21 @@ export function buildCertificateDetailViewModel(certificate: {
     createdAt: certificate.createdAt.toISOString(),
     sale: {
       id: sale.id,
+      clientCompanyName: sale.client.name,
       clientReference: sale.clientReference ?? "Unreferenced sale",
       status: sale.status,
+      sellerName: sale.submittedByUser?.name ?? null,
+      sellerEmail: sale.submittedByUser?.email ?? null,
+      customerName: sale.customerName,
+      customerPhone: sale.customerPhone,
+      customerEmail: sale.customerEmail,
+      customerAddress: sale.customerAddress,
       productName: sale.productName,
+      subscriptionPrice: price,
+      subscriptionFrequency: sale.productFrequency,
+      contractLength: null,
+      salesChannel:
+        sale.salesChannel ?? stringFromJson(certificateJson, "sales_channel"),
       priceSummary: `${price}${frequency}`,
       termsSummary:
         sale.productTerms ?? stringFromJson(certificateJson, "terms_summary"),
@@ -158,6 +220,12 @@ export function buildCertificateDetailViewModel(certificate: {
       declinedAt:
         certificate.verificationSession.declinedAt?.toISOString() ?? null,
       expiresAt: certificate.verificationSession.expiresAt.toISOString(),
+      customerIpAddress: stringFromJson(certificateJson, "ip_address"),
+      customerUserAgent: stringFromJson(certificateJson, "user_agent"),
+    },
+    policy: {
+      ...resolvedPolicy,
+      isLegacyFallback,
     },
     confirmations: [
       {
@@ -185,15 +253,21 @@ export function buildCertificateDetailViewModel(certificate: {
       },
       {
         label: "Typed name confirmation",
-        value: stringFromJson(certificateJson, "typed_name") ? "Recorded" : null,
+        value: stringFromJson(certificateJson, "typed_name"),
       },
     ],
     paymentSummary: {
+      bankName: stringFromJson(certificateJson, "direct_debit_bank_name"),
       accountEnding: accountLast4 ? `Account ending ${accountLast4}` : null,
       sortCodeMasked: maskSortCodeForDashboard(
         stringFromJson(certificateJson, "direct_debit_sort_code")
       ),
+      accountHolderName: stringFromJson(
+        certificateJson,
+        "direct_debit_account_holder"
+      ),
     },
+    policyVersion,
     timeline: [
       {
         type: "Verification session created",
@@ -246,6 +320,9 @@ export async function getDashboardCertificateDetail(
           client: {
             organizationId: context.organization.id,
           },
+          ...(context.membership.role === "SELLER"
+            ? { submittedByUserId: context.user.id }
+            : {}),
         },
       },
     },
@@ -273,13 +350,28 @@ export async function getDashboardCertificateDetail(
             select: {
               id: true,
               clientReference: true,
+              customerName: true,
+              customerPhone: true,
+              customerEmail: true,
+              customerAddress: true,
               productName: true,
               productPrice: true,
               productFrequency: true,
               productTerms: true,
               productPolicies: true,
+              policySnapshot: true,
+              salesChannel: true,
               coolingOffDays: true,
               status: true,
+              client: {
+                select: { name: true },
+              },
+              submittedByUser: {
+                select: {
+                  name: true,
+                  email: true,
+                },
+              },
             },
           },
         },

@@ -24,10 +24,19 @@ export type DashboardOverviewActivity = {
 
 export type DashboardOverviewData = {
   metrics: DashboardOverviewMetrics;
+  onboarding: {
+    hasCompanyDetails: boolean;
+    hasPolicy: boolean;
+    sellerCount: number;
+    notificationCount: number;
+  };
   recentActivity: DashboardOverviewActivity[];
 };
 
-type DashboardOverviewDb = Pick<Prisma.TransactionClient, "sale" | "verificationSession" | "certificate">;
+type DashboardOverviewDb = Pick<
+  Prisma.TransactionClient,
+  "sale" | "verificationSession" | "certificate" | "clientPolicy" | "organizationMembership" | "notification"
+>;
 
 export function buildOrganizationSaleWhere(
   organizationId: string
@@ -120,6 +129,9 @@ export async function getDashboardOverviewData(
     expiredVerifications,
     certificatesIssued,
     recentActivityCount,
+    policyCount,
+    sellerCount,
+    notificationCount,
     recentSessions,
   ] = await Promise.all([
     prisma.sale.count({
@@ -142,6 +154,28 @@ export async function getDashboardOverviewData(
     }),
     prisma.verificationSession.count({
       where: buildOrganizationVerificationWhere(organizationId),
+    }),
+    prisma.clientPolicy.count({
+      where: {
+        client: {
+          organizationId,
+        },
+      },
+    }),
+    prisma.organizationMembership.count({
+      where: {
+        organizationId,
+        role: "SELLER",
+      },
+    }),
+    prisma.notification.count({
+      where: {
+        sale: {
+          client: {
+            organizationId,
+          },
+        },
+      },
     }),
     prisma.verificationSession.findMany({
       where: buildOrganizationVerificationWhere(organizationId),
@@ -179,6 +213,14 @@ export async function getDashboardOverviewData(
         expired: expiredVerifications,
         pending: pendingVerifications,
       }),
+    },
+    onboarding: {
+      hasCompanyDetails: Boolean(
+        context.organization.name && context.organization.primaryContactEmail
+      ),
+      hasPolicy: policyCount > 0,
+      sellerCount,
+      notificationCount,
     },
     recentActivity: recentSessions.map((session) => ({
       id: session.id,

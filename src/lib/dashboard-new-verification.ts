@@ -10,6 +10,7 @@ import {
   maskAccountNumber,
 } from "@/lib/crypto";
 import { sendVerificationLinkNotification } from "@/lib/notifications";
+import { buildPolicySnapshotForClient } from "@/lib/client-policy";
 
 const APP_URL = process.env.APP_URL ?? "http://localhost:3000";
 const VERIFICATION_EXPIRY_MINUTES = 30;
@@ -278,6 +279,11 @@ export async function createDashboardVerification(params: {
     throw error;
   }
 
+  const policySnapshot = await buildPolicySnapshotForClient({
+    clientId: client.id,
+    coolingOffDays: input.coolingOffDays,
+  });
+
   const sale = await db.sale.create({
     data: {
       clientId: client.id,
@@ -294,6 +300,7 @@ export async function createDashboardVerification(params: {
       salesChannel: input.salesChannel,
       aiMarketingOptIn: input.aiMarketingOptIn,
       coolingOffDays: input.coolingOffDays,
+      policySnapshot,
       directDebitMandate: {
         create: {
           bankName: input.bankName,

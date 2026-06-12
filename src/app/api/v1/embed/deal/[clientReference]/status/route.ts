@@ -110,5 +110,8 @@ export async function GET(request: Request, { params }: Params) {
     latest_verification_declined_at:
       latestSession?.declinedAt?.toISOString() ?? null,
     certificate_id: latestSession?.certificate?.id ?? null,
+    certificate_url: latestSession?.certificate?.id
+      ? `/api/v1/certificates/${latestSession.certificate.id}`
+      : null,
   });
 }

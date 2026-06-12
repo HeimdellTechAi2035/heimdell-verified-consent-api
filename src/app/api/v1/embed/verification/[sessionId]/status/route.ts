@@ -102,5 +102,8 @@ export async function GET(request: Request, { params }: Params) {
     completed_at: session.completedAt?.toISOString() ?? null,
     declined_at: session.declinedAt?.toISOString() ?? null,
     certificate_id: session.certificate?.id ?? null,
+    certificate_url: session.certificate?.id
+      ? `/api/v1/certificates/${session.certificate.id}`
+      : null,
   });
 }

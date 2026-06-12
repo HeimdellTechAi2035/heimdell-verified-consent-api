@@ -20,6 +20,7 @@
     "setup:demo": "node scripts/setup-demo.mjs",
     "backfill:organization-clients": "node scripts/backfill-organization-clients.mjs",
     "worker:webhooks": "node scripts/run-webhook-worker.mjs",
+    "worker:notifications": "node scripts/run-notification-worker.mjs",
     "webhook:receiver": "node scripts/webhook-test-receiver.mjs",
     "webhook:worker": "node scripts/run-webhook-worker.mjs",
     "test:authz": "node scripts/verify-authz.mjs",

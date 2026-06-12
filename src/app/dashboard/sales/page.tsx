@@ -1,4 +1,4 @@
-// Dashboard -- Sales page.
+﻿// Dashboard -- Sales page.
 // Live tenant-scoped sales list for the authenticated organization.
 
 import Link from "next/link";
@@ -22,13 +22,21 @@ type SalesPageProps = {
 
 const COLUMNS: DataTableColumn<DashboardSaleRow>[] = [
   {
-    header: "Sale",
+    header: "Customer",
     cell: (r) => (
       <div>
-        <p className="font-mono text-xs text-gray-500">{r.saleReference}</p>
-        <p className="font-mono text-xs text-gray-400 mt-0.5">
-          {r.clientReference}
-        </p>
+        <p className="font-medium text-gray-900 text-sm">{r.customerName}</p>
+        <p className="text-xs text-gray-500 mt-0.5">{r.customerPhone ?? "No phone"}</p>
+        <p className="text-xs text-gray-400 mt-0.5">{r.customerEmail ?? "No email"}</p>
+      </div>
+    ),
+  },
+  {
+    header: "Seller",
+    cell: (r) => (
+      <div>
+        <p className="text-sm text-gray-700">{r.sellerName ?? "Unassigned"}</p>
+        <p className="text-xs text-gray-400 mt-0.5">{r.sellerEmail ?? "No seller email"}</p>
       </div>
     ),
   },
@@ -38,39 +46,38 @@ const COLUMNS: DataTableColumn<DashboardSaleRow>[] = [
       <div>
         <p className="font-medium text-gray-900 text-sm">{r.productName}</p>
         <p className="text-xs text-gray-400 mt-0.5">
-          {r.productCategory ?? "Category not recorded"}
+          {r.priceSummary}
         </p>
       </div>
     ),
   },
   {
-    header: "Price",
+    header: "Reference",
     cell: (r) => (
       <div>
-        <p className="font-mono text-xs text-gray-700">GBP {r.monthlyPrice}</p>
-        <p className="text-xs text-gray-400 mt-0.5">
-          {r.billingFrequency ?? "Frequency not recorded"}
-        </p>
+        <p className="font-mono text-xs text-gray-500">{r.clientReference}</p>
+        <p className="font-mono text-xs text-gray-400 mt-0.5">{r.saleReference}</p>
       </div>
     ),
   },
   {
-    header: "Contract",
-    cell: (r) => (
-      <span className="text-xs text-gray-500">
-        {r.contractLength ?? "Not recorded"}
-      </span>
-    ),
-  },
-  {
-    header: "Sale Status",
+    header: "Sale",
     cell: (r) => <StatusBadge status={r.saleStatus} />,
   },
   {
     header: "Verification",
     cell: (r) =>
       r.latestVerificationStatus ? (
-        <StatusBadge status={r.latestVerificationStatus} />
+        <div className="space-y-1">
+          <StatusBadge status={r.latestVerificationStatus} />
+          <p className="text-xs text-gray-400">
+            {r.latestVerificationCompletedAt
+              ? `Completed ${new Date(r.latestVerificationCompletedAt).toLocaleDateString("en-GB")}`
+              : r.latestVerificationDeclinedAt
+              ? `Declined ${new Date(r.latestVerificationDeclinedAt).toLocaleDateString("en-GB")}`
+              : "Awaiting customer"}
+          </p>
+        </div>
       ) : (
         <span className="text-xs text-gray-400">No session</span>
       ),
@@ -87,14 +94,32 @@ const COLUMNS: DataTableColumn<DashboardSaleRow>[] = [
     ),
   },
   {
-    header: "Updated",
+    header: "Links",
     cell: (r) => (
-      <span className="text-xs text-gray-500 whitespace-nowrap">
-        {new Date(r.updatedAt).toLocaleString("en-GB", {
-          dateStyle: "medium",
-          timeStyle: "short",
-        })}
-      </span>
+      <div className="flex flex-col gap-1">
+        <Link
+          className="text-xs font-semibold text-blue-600"
+          href={`/dashboard/sales/${encodeURIComponent(r.id)}`}
+        >
+          View sale
+        </Link>
+        {r.latestVerificationId && (
+          <Link
+            className="text-xs font-semibold text-gray-600"
+            href={`/dashboard/verifications/${encodeURIComponent(r.latestVerificationId)}`}
+          >
+            View verification
+          </Link>
+        )}
+        {r.certificateId && (
+          <Link
+            className="text-xs font-semibold text-green-700"
+            href={`/dashboard/certificates/${encodeURIComponent(r.certificateId)}`}
+          >
+            View certificate
+          </Link>
+        )}
+      </div>
     ),
   },
 ];
@@ -143,9 +168,9 @@ function LiveDataIndicator() {
         />
       </svg>
       <p className="text-sm text-green-800">
-        <span className="font-semibold">Live tenant-scoped data.</span>{" "}
-        Sales are loaded server-side for your organization only. Customer
-        contact details, payment details, tokens, and hashes are not shown.
+        <span className="font-semibold">Secure company data.</span>{" "}
+        Sales are loaded securely for your organization only. Raw tokens,
+        secure link internals, full account numbers, and encrypted payment values are not shown.
       </p>
     </div>
   );
@@ -155,12 +180,17 @@ function EmptyState() {
   return (
     <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 text-center">
       <h3 className="text-sm font-semibold text-gray-700">
-        No sales found
+        No sales yet
       </h3>
       <p className="text-xs text-gray-400 mt-1">
-        Sales will appear here after this organization submits records through
-        the intake API. Filters may also be hiding existing rows.
+        Create a new verification to start collecting customer consent evidence.
       </p>
+      <Link
+        href="/dashboard/sales/new"
+        className="mt-4 inline-flex rounded-lg bg-blue-600 px-4 py-2 text-xs font-semibold text-white"
+      >
+        Create a new verification
+      </Link>
     </div>
   );
 }
@@ -213,7 +243,7 @@ function PaginationControls({ data }: { data: DashboardSalesData }) {
   return (
     <div className="mt-4 flex items-center justify-between gap-4 text-xs text-gray-500">
       <span>
-        Page {data.pagination.page} of {data.pagination.totalPages} ·{" "}
+        Page {data.pagination.page} of {data.pagination.totalPages} Â·{" "}
         {data.pagination.totalRows} sales
       </span>
       <div className="flex items-center gap-2">
@@ -288,7 +318,7 @@ async function SalesContent({
 
       <DashboardHeader
         title="Sales"
-        subtitle="Live sales submitted via POST /api/v1/sales/intake."
+        subtitle="Customer, seller, verification, and certificate evidence for this organization."
         action={
           <Link
             href="/dashboard/sales/new"
@@ -309,7 +339,7 @@ async function SalesContent({
               <DataTable
                 columns={COLUMNS}
                 rows={data.rows}
-                footer="Showing safe tenant-scoped sales fields only. Search is limited to sale ID and client reference."
+                footer="Showing safe sales fields only. Pending verification links are not stored after creation, so they cannot be copied from this list."
               />
               <PaginationControls data={data} />
             </>

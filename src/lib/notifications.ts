@@ -1,23 +1,7 @@
-// Phase 7 — Provider-agnostic notification layer
-//
-// Logs notification intent to the database; does NOT send real messages yet.
-// When a real provider (Twilio, SendGrid, etc.) is connected, replace the
-// QUEUED records with actual dispatch logic and update status to SENT/FAILED.
-//
-// Design rules:
-//   - Never throw — always catch and return a structured result.
-//   - Never log raw tokens, raw API keys, or account numbers.
-//   - The raw verification URL is accepted as a parameter for future use but
-//     is NOT stored in the database (it contains the raw token). The URL will
-//     be passed directly to a provider at send-time; it is never persisted.
-//   - If recipient data is missing, log status SKIPPED with a safe message.
-
+import type { NotificationChannel, NotificationStatus } from "@prisma/client";
 import { db } from "@/lib/db";
+import { deliverCustomerNotification } from "@/lib/notification-delivery";
 import { queueWebhookDelivery } from "@/lib/webhooks";
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
 
 export type NotificationResult = {
   ok: boolean;
@@ -26,25 +10,29 @@ export type NotificationResult = {
   reason?: string;
 };
 
-type Channel = "SMS" | "EMAIL" | "WHATSAPP" | "WEBHOOK";
-type Status = "QUEUED" | "SKIPPED" | "FAILED";
-
 type CreateNotificationLogParams = {
   saleId: string;
-  channel: Channel;
+  channel: NotificationChannel;
   recipient: string;
-  status: Status;
-  errorMessage?: string;
+  status: NotificationStatus;
+  notificationType: string;
+  subject?: string | null;
+  messagePreview?: string | null;
+  errorMessage?: string | null;
+  nextAttemptAt?: Date | null;
 };
 
-// ---------------------------------------------------------------------------
-// Core log helper
-// ---------------------------------------------------------------------------
+function safePreview(value: string) {
+  return value
+    .replace(/https?:\/\/\S+\/v\/\S+/gi, "[secure verification link]")
+    .replace(/\b\d{6,}\b/g, "[redacted]")
+    .slice(0, 500);
+}
 
-/**
- * Persists a single notification record to the database.
- * Never throws — always returns a structured result.
- */
+function whatsappEnabled() {
+  return process.env.HEIMDELL_ENABLE_WHATSAPP === "true";
+}
+
 export async function createNotificationLog(
   params: CreateNotificationLogParams
 ): Promise<NotificationResult> {
@@ -55,11 +43,30 @@ export async function createNotificationLog(
         channel: params.channel,
         recipient: params.recipient,
         status: params.status,
-        errorMessage: params.errorMessage ?? null,
+        notificationType: params.notificationType,
+        subject: params.subject ?? null,
+        messagePreview: params.messagePreview
+          ? safePreview(params.messagePreview)
+          : null,
         providerId: null,
+        providerMessageId: null,
+        errorMessage: params.errorMessage ?? null,
         sentAt: null,
+        failedAt: null,
+        attempts: 0,
+        maxAttempts: 5,
+        nextAttemptAt: params.nextAttemptAt ?? null,
       },
-      select: { id: true, status: true },
+      select: {
+        id: true,
+        channel: true,
+        recipient: true,
+        subject: true,
+        messagePreview: true,
+        status: true,
+        attempts: true,
+        maxAttempts: true,
+      },
     });
 
     return {
@@ -68,71 +75,148 @@ export async function createNotificationLog(
       status: notification.status,
     };
   } catch (err) {
-    console.error("[notifications] failed to write log entry:", err);
+    console.error("[notifications] failed to write log entry", {
+      errorName: err instanceof Error ? err.name : "UnknownError",
+    });
     return { ok: false, reason: "Database write failed" };
   }
 }
 
-// ---------------------------------------------------------------------------
-// 1. Verification link created
-// ---------------------------------------------------------------------------
+async function createAndDeliverCustomerNotification(params: {
+  saleId: string;
+  channel: Exclude<NotificationChannel, "WEBHOOK">;
+  recipient: string | null;
+  notificationType: string;
+  subject: string | null;
+  messageBody: string;
+  allowRetry: boolean;
+}) {
+  if (!params.recipient) {
+    return createNotificationLog({
+      saleId: params.saleId,
+      channel: params.channel,
+      recipient: "N/A",
+      status: "SKIPPED",
+      notificationType: params.notificationType,
+      subject: params.subject,
+      messagePreview: params.messageBody,
+      errorMessage: `No ${params.channel.toLowerCase()} recipient is available`,
+    });
+  }
+
+  const created = await db.notification.create({
+    data: {
+      saleId: params.saleId,
+      channel: params.channel,
+      recipient: params.recipient,
+      status: "QUEUED",
+      notificationType: params.notificationType,
+      subject: params.subject,
+      messagePreview: safePreview(params.messageBody),
+      attempts: 0,
+      maxAttempts: 5,
+      nextAttemptAt: new Date(),
+    },
+    select: {
+      id: true,
+      channel: true,
+      recipient: true,
+      subject: true,
+      messagePreview: true,
+      status: true,
+      attempts: true,
+      maxAttempts: true,
+    },
+  });
+
+  const delivered = await deliverCustomerNotification({
+    notification: created,
+    messageBody: params.messageBody,
+    allowRetry: params.allowRetry,
+  });
+
+  return {
+    ok: true,
+    notificationId: created.id,
+    status: delivered.status,
+    reason: delivered.reason,
+  };
+}
 
 export type VerificationLinkParams = {
   saleId: string;
   customerPhone: string | null;
   customerEmail: string | null;
-  /**
-   * The full verification URL including the raw token.
-   * Passed here so the future send-time processor can include it in the
-   * message body. NOT stored in the database.
-   */
   verificationUrl: string;
-  /** Optional — if provided, a verification.link_created webhook is queued. */
   clientWebhookUrl?: string | null;
   webhookSecret?: string | null;
 };
 
-/**
- * Queue a notification for a newly created verification link.
- * Prefers SMS if a phone number is available; falls back to email.
- */
 export async function sendVerificationLinkNotification(
   params: VerificationLinkParams
 ): Promise<NotificationResult[]> {
   const results: NotificationResult[] = [];
+  const subject = "Your secure Heimdell verification link";
+  const body = `Please review and confirm your sale details using this secure Heimdell verification link: ${params.verificationUrl}`;
 
-  if (params.customerPhone) {
-    results.push(
-      await createNotificationLog({
-        saleId: params.saleId,
-        channel: "SMS",
-        recipient: params.customerPhone,
-        status: "QUEUED",
-      })
-    );
-  } else if (params.customerEmail) {
-    results.push(
-      await createNotificationLog({
-        saleId: params.saleId,
-        channel: "EMAIL",
-        recipient: params.customerEmail,
-        status: "QUEUED",
-      })
-    );
-  } else {
+  if (!params.customerPhone && !params.customerEmail) {
     results.push(
       await createNotificationLog({
         saleId: params.saleId,
         channel: "SMS",
         recipient: "N/A",
         status: "SKIPPED",
+        notificationType: "verification.link_created",
+        subject,
+        messagePreview: "No customer phone number or email address was available.",
         errorMessage:
           "No phone number or email address available for verification link notification",
       })
     );
   }
 
-  // Webhook — queue if both webhookUrl and webhookSecret are present
+  if (params.customerEmail) {
+    results.push(
+      await createAndDeliverCustomerNotification({
+        saleId: params.saleId,
+        channel: "EMAIL",
+        recipient: params.customerEmail,
+        notificationType: "verification.link_created",
+        subject,
+        messageBody: body,
+        allowRetry: false,
+      })
+    );
+  }
+
+  if (params.customerPhone) {
+    results.push(
+      await createAndDeliverCustomerNotification({
+        saleId: params.saleId,
+        channel: "SMS",
+        recipient: params.customerPhone,
+        notificationType: "verification.link_created",
+        subject: null,
+        messageBody: body,
+        allowRetry: false,
+      })
+    );
+  }
+
+  if (whatsappEnabled() && params.customerPhone) {
+    results.push(
+      await createAndDeliverCustomerNotification({
+        saleId: params.saleId,
+        channel: "WHATSAPP",
+        recipient: params.customerPhone,
+        notificationType: "verification.link_created",
+        subject: null,
+        messageBody: body,
+        allowRetry: false,
+      })
+    );
+  }
+
   results.push(
     await queueWebhookDelivery({
       saleId: params.saleId,
@@ -145,10 +229,6 @@ export async function sendVerificationLinkNotification(
   return results;
 }
 
-// ---------------------------------------------------------------------------
-// 2. Verification completed
-// ---------------------------------------------------------------------------
-
 export type VerificationCompletedParams = {
   saleId: string;
   verificationSessionId: string;
@@ -158,32 +238,36 @@ export type VerificationCompletedParams = {
   webhookSecret: string | null;
 };
 
-/**
- * Queue customer confirmation and client webhook notifications after a
- * verification has been completed.
- */
 export async function sendVerificationCompletedNotification(
   params: VerificationCompletedParams
 ): Promise<NotificationResult[]> {
   const results: NotificationResult[] = [];
+  const subject = "Your Heimdell verification is complete";
+  const body =
+    "Your Heimdell verification has been completed and securely recorded.";
 
-  // Customer confirmation — prefer SMS, fall back to email
-  if (params.customerPhone) {
+  if (params.customerEmail) {
     results.push(
-      await createNotificationLog({
-        saleId: params.saleId,
-        channel: "SMS",
-        recipient: params.customerPhone,
-        status: "QUEUED",
-      })
-    );
-  } else if (params.customerEmail) {
-    results.push(
-      await createNotificationLog({
+      await createAndDeliverCustomerNotification({
         saleId: params.saleId,
         channel: "EMAIL",
         recipient: params.customerEmail,
-        status: "QUEUED",
+        notificationType: "verification.completed",
+        subject,
+        messageBody: body,
+        allowRetry: true,
+      })
+    );
+  } else if (params.customerPhone) {
+    results.push(
+      await createAndDeliverCustomerNotification({
+        saleId: params.saleId,
+        channel: "SMS",
+        recipient: params.customerPhone,
+        notificationType: "verification.completed",
+        subject: null,
+        messageBody: body,
+        allowRetry: true,
       })
     );
   } else {
@@ -193,13 +277,15 @@ export async function sendVerificationCompletedNotification(
         channel: "SMS",
         recipient: "N/A",
         status: "SKIPPED",
+        notificationType: "verification.completed",
+        subject,
+        messagePreview: body,
         errorMessage:
           "No customer contact details for completion confirmation notification",
       })
     );
   }
 
-  // Signed webhook to client system
   results.push(
     await queueWebhookDelivery({
       saleId: params.saleId,
@@ -211,7 +297,6 @@ export async function sendVerificationCompletedNotification(
 
   return results;
 }
-// ---------------------------------------------------------------------------
 
 export type CertificateCreatedParams = {
   saleId: string;
@@ -220,30 +305,18 @@ export type CertificateCreatedParams = {
   webhookSecret: string | null;
 };
 
-/**
- * Queue a webhook notification when a Certificate is created, so the client
- * system knows it can now call GET /api/v1/certificates/:id.
- */
 export async function sendCertificateCreatedNotification(
   params: CertificateCreatedParams
 ): Promise<NotificationResult[]> {
-  const results: NotificationResult[] = [];
-
-  results.push(
+  return [
     await queueWebhookDelivery({
       saleId: params.saleId,
       event: "certificate.created",
       clientWebhookUrl: params.clientWebhookUrl,
       webhookSecret: params.webhookSecret,
-    })
-  );
-
-  return results;
+    }),
+  ];
 }
-
-// ---------------------------------------------------------------------------
-// 4. Verification declined
-// ---------------------------------------------------------------------------
 
 export type VerificationDeclinedParams = {
   saleId: string;
@@ -254,16 +327,14 @@ export type VerificationDeclinedParams = {
   webhookSecret: string | null;
 };
 
-/**
- * Queue a client webhook notification and an optional customer notification
- * when a verification is declined.
- */
 export async function sendVerificationDeclinedNotification(
   params: VerificationDeclinedParams
 ): Promise<NotificationResult[]> {
   const results: NotificationResult[] = [];
+  const subject = "Your Heimdell verification was declined";
+  const body =
+    "Your Heimdell verification decline has been securely recorded. Contact the provider if this was unexpected.";
 
-  // Signed webhook to client system
   results.push(
     await queueWebhookDelivery({
       saleId: params.saleId,
@@ -273,23 +344,28 @@ export async function sendVerificationDeclinedNotification(
     })
   );
 
-  // Optional customer notification
-  if (params.customerPhone) {
+  if (params.customerEmail) {
     results.push(
-      await createNotificationLog({
-        saleId: params.saleId,
-        channel: "SMS",
-        recipient: params.customerPhone,
-        status: "QUEUED",
-      })
-    );
-  } else if (params.customerEmail) {
-    results.push(
-      await createNotificationLog({
+      await createAndDeliverCustomerNotification({
         saleId: params.saleId,
         channel: "EMAIL",
         recipient: params.customerEmail,
-        status: "QUEUED",
+        notificationType: "verification.declined",
+        subject,
+        messageBody: body,
+        allowRetry: true,
+      })
+    );
+  } else if (params.customerPhone) {
+    results.push(
+      await createAndDeliverCustomerNotification({
+        saleId: params.saleId,
+        channel: "SMS",
+        recipient: params.customerPhone,
+        notificationType: "verification.declined",
+        subject: null,
+        messageBody: body,
+        allowRetry: true,
       })
     );
   }

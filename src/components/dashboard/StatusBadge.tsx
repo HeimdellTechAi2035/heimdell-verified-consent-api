@@ -2,6 +2,7 @@
 
 type Status =
   | "PENDING"
+  | "SENDING"
   | "OPENED"
   | "COMPLETED"
   | "VERIFIED"
@@ -21,6 +22,7 @@ type StatusMeta = { label: string; dot: string; badge: string };
 
 const STATUS_MAP: Record<Status, StatusMeta> = {
   PENDING:   { label: "Pending",   dot: "bg-gray-400",    badge: "bg-gray-100 text-gray-600 border-gray-200"    },
+  SENDING:   { label: "Sending",   dot: "bg-blue-500",    badge: "bg-blue-50 text-blue-700 border-blue-200"    },
   OPENED:    { label: "Opened",    dot: "bg-blue-400",    badge: "bg-blue-50 text-blue-700 border-blue-200"    },
   COMPLETED: { label: "Completed", dot: "bg-green-500",   badge: "bg-green-50 text-green-700 border-green-200"  },
   VERIFIED:  { label: "Verified",  dot: "bg-green-500",   badge: "bg-green-50 text-green-700 border-green-200"  },

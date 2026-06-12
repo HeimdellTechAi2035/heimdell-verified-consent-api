@@ -87,6 +87,15 @@ export type SessionLookupData = {
     account_number_last4: string;
     account_holder_name: string;
   } | null;
+  policy_snapshot: {
+    termsAndConditions: string;
+    coolingOffPolicy: string;
+    cancellationInstructions: string;
+    privacyEvidenceWording: string;
+    directDebitGuaranteeWording: string;
+    policyVersion: string;
+    capturedAt: string;
+  };
   ai_marketing_opt_in: boolean | null;
   cooling_off_days: number | null;
 };

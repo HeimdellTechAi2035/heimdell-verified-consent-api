@@ -1,6 +1,7 @@
-// Dashboard -- Overview page.
-// Live tenant-scoped metrics for the authenticated organization.
+﻿// Dashboard -- Overview page.
+// Live organization metrics for the authenticated organization.
 
+import Link from "next/link";
 import { DashboardCard } from "@/components/dashboard/DashboardCard";
 import { DashboardHeader } from "@/components/dashboard/DashboardHeader";
 import { DashboardRoleGate } from "@/components/dashboard/DashboardRoleGate";
@@ -12,31 +13,6 @@ import {
   type DashboardOverviewActivity,
   type DashboardOverviewData,
 } from "@/lib/dashboard-overview";
-
-function EndpointRow({
-  method,
-  path,
-  desc,
-}: {
-  method: string;
-  path: string;
-  desc: string;
-}) {
-  const isPost = method === "POST";
-  return (
-    <div className="flex items-start gap-3 py-2 border-b border-gray-50 last:border-0">
-      <span
-        className={`shrink-0 text-xs font-bold px-2 py-0.5 rounded font-mono ${
-          isPost ? "bg-blue-100 text-blue-700" : "bg-green-100 text-green-700"
-        }`}
-      >
-        {method}
-      </span>
-      <code className="text-xs text-gray-700 font-mono shrink-0">{path}</code>
-      <span className="text-xs text-gray-400">{desc}</span>
-    </div>
-  );
-}
 
 const ACTIVITY_COLS: DataTableColumn<DashboardOverviewActivity>[] = [
   {
@@ -89,9 +65,9 @@ function LiveDataIndicator() {
         />
       </svg>
       <p className="text-sm text-green-800">
-        <span className="font-semibold">Live tenant-scoped data.</span>{" "}
-        Overview metrics are loaded server-side for your organization only.
-        Other sections remain visible only where the signed-in role is allowed.
+        <span className="font-semibold">Secure company view.</span>{" "}
+        Overview metrics are loaded for your organization only. Each dashboard
+        section is shown only where the signed-in role is allowed.
       </p>
     </div>
   );
@@ -119,10 +95,146 @@ function EmptyActivityState() {
         No verification activity yet
       </h3>
       <p className="text-xs text-gray-400 mt-1">
-        Tenant-scoped activity will appear here after this organization submits
-        sales and customers open or complete verification sessions.
+        Activity will appear here after your team sends verifications and
+        customers open or complete their secure links.
       </p>
     </div>
+  );
+}
+
+function ChecklistStatus({
+  status,
+}: {
+  status: "completed" | "needs action" | "optional";
+}) {
+  const styles = {
+    completed: "bg-green-100 text-green-700",
+    "needs action": "bg-amber-100 text-amber-700",
+    optional: "bg-gray-100 text-gray-600",
+  };
+
+  return (
+    <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${styles[status]}`}>
+      {status}
+    </span>
+  );
+}
+
+function PilotOnboardingChecklist({ data }: { data: DashboardOverviewData }) {
+  const items = [
+    {
+      title: "Review company details",
+      description: "Confirm the company name and contact details shown to customers.",
+      href: "/dashboard/settings",
+      action: "Open settings",
+      status: data.onboarding.hasCompanyDetails ? "completed" : "needs action",
+    },
+    {
+      title: "Add or review policy wording",
+      description: "Check terms, cooling-off, cancellation, privacy, and Direct Debit wording.",
+      href: "/dashboard/settings",
+      action: "Review policies",
+      status: data.onboarding.hasPolicy ? "completed" : "needs action",
+    },
+    {
+      title: "Add sellers",
+      description: "Create seller logins for the people who will send verifications.",
+      href: "/dashboard/staff",
+      action: "Manage sellers",
+      status: data.onboarding.sellerCount > 0 ? "completed" : "needs action",
+    },
+    {
+      title: "Send first test verification",
+      description: "Create a test sale and send the secure customer link.",
+      href: "/dashboard/sales/new",
+      action: "New Verification",
+      status: data.metrics.totalSales > 0 ? "completed" : "needs action",
+    },
+    {
+      title: "Complete customer test link",
+      description: "Open the customer link, review the evidence, and confirm or decline.",
+      href: "/dashboard/verifications",
+      action: "View verifications",
+      status:
+        data.metrics.completedVerifications + data.metrics.declinedVerifications > 0
+          ? "completed"
+          : "needs action",
+    },
+    {
+      title: "View certificate/PDF",
+      description: "Confirm the certificate contains the human-readable proof.",
+      href: "/dashboard/certificates",
+      action: "View certificates",
+      status: data.metrics.certificatesIssued > 0 ? "completed" : "needs action",
+    },
+    {
+      title: "Check notification status",
+      description: "Review customer notification records and delivery outcomes.",
+      href: "/dashboard/notifications",
+      action: "Open notifications",
+      status: data.onboarding.notificationCount > 0 ? "completed" : "optional",
+    },
+    {
+      title: "Go live",
+      description: "Use the pilot test checklist before sending real customer links.",
+      href: "/dashboard/sales/new",
+      action: "Start live flow",
+      status:
+        data.metrics.certificatesIssued > 0 && data.onboarding.notificationCount > 0
+          ? "completed"
+          : "needs action",
+    },
+  ] as const;
+
+  return (
+    <section className="mb-8 rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+      <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h3 className="text-sm font-semibold text-gray-800">
+            Pilot onboarding checklist
+          </h3>
+          <p className="mt-1 text-xs text-gray-500">
+            Work through these steps before sending customer verifications in
+            the pilot.
+          </p>
+        </div>
+        <Link
+          href="/dashboard/sales/new"
+          className="inline-flex rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white"
+        >
+          New Verification
+        </Link>
+      </div>
+      <div className="grid gap-3 md:grid-cols-2">
+        {items.map((item, index) => (
+          <div
+            key={item.title}
+            className="rounded-xl border border-gray-100 bg-gray-50 p-4"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase text-gray-400">
+                  Step {index + 1}
+                </p>
+                <h4 className="mt-1 text-sm font-semibold text-gray-900">
+                  {item.title}
+                </h4>
+              </div>
+              <ChecklistStatus status={item.status} />
+            </div>
+            <p className="mt-2 text-xs leading-relaxed text-gray-500">
+              {item.description}
+            </p>
+            <Link
+              href={item.href}
+              className="mt-3 inline-flex text-xs font-semibold text-blue-600"
+            >
+              {item.action}
+            </Link>
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -167,8 +279,10 @@ async function OverviewContent() {
 
       <DashboardHeader
         title="Overview"
-        subtitle="Live organization metrics loaded server-side."
+        subtitle="Company verification activity and pilot setup progress."
       />
+
+      <PilotOnboardingChecklist data={overview} />
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         <DashboardCard
@@ -229,7 +343,7 @@ async function OverviewContent() {
           <DataTable
             columns={ACTIVITY_COLS}
             rows={recentActivity}
-            footer="Showing safe tenant-scoped verification activity only."
+            footer="Showing safe verification activity for your organization only."
           />
         ) : (
           <EmptyActivityState />
@@ -252,64 +366,21 @@ async function OverviewContent() {
             />
           </svg>
           <h3 className="text-sm font-semibold text-blue-800">
-            Demo-ready security posture
+            Security check
           </h3>
         </div>
         <ol className="space-y-1.5 text-xs text-blue-700 list-decimal list-inside">
           <li>
-            Live dashboard sections load tenant-scoped records server-side.
+            Dashboard sections load company records server-side.
           </li>
           <li>
             Seller users see only their own submitted sales in My Sales.
           </li>
           <li>
-            Continue hiding raw tokens, hashes, API keys, and full bank/payment
-            details.
+            Full bank account numbers and sensitive access credentials are not
+            shown in the dashboard.
           </li>
         </ol>
-      </div>
-
-      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
-        <h3 className="text-sm font-semibold text-gray-700 mb-4">
-          API Endpoints
-        </h3>
-        <div className="space-y-0">
-          <EndpointRow
-            method="POST"
-            path="/api/v1/sales/intake"
-            desc="Create a sale and issue a verification link"
-          />
-          <EndpointRow
-            method="GET"
-            path="/api/v1/verification-sessions/[token]"
-            desc="Look up session data for the customer consent page"
-          />
-          <EndpointRow
-            method="POST"
-            path="/api/v1/verification-sessions/[token]/complete"
-            desc="Submit the customer's full consent confirmation"
-          />
-          <EndpointRow
-            method="POST"
-            path="/api/v1/verification-sessions/[token]/decline"
-            desc="Record a customer decline"
-          />
-          <EndpointRow
-            method="GET"
-            path="/api/v1/certificates/[id]"
-            desc="Retrieve a compliance certificate (x-api-key required)"
-          />
-          <EndpointRow
-            method="POST"
-            path="/api/v1/webhooks/test"
-            desc="Preview a signed webhook payload (x-api-key required)"
-          />
-          <EndpointRow
-            method="GET"
-            path="/api/health"
-            desc="Service health check (no auth, no database)"
-          />
-        </div>
       </div>
     </>
   );

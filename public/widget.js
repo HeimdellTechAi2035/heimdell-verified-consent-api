@@ -62,9 +62,10 @@
 
   var isVerification = config.mode === "verification";
   var isDeal = config.mode === "deal";
+  var isCreate = config.mode === "create";
 
-  if (!isVerification && !isDeal) {
-    console.warn("[Heimdell] Invalid widget mode. Use 'verification' or 'deal'.");
+  if (!isVerification && !isDeal && !isCreate) {
+    console.warn("[Heimdell] Invalid widget mode. Use 'create', 'verification', or 'deal'.");
     return;
   }
 
@@ -82,6 +83,7 @@
     ".hvcs-badge.EXPIRED{border-color:#fde68a;background:#fffbeb;color:#b45309}",
     ".hvcs-badge.OPENED{border-color:#bfdbfe;background:#eff6ff;color:#1d4ed8}",
     ".hvcs-error{border-color:#fecaca;background:#fef2f2;color:#991b1b}.hvcs-muted{font-size:11px;color:#64748b;line-height:1.45}",
+    ".hvcs-iframe{width:100%;height:680px;border:0;display:block;background:#fff}",
     "#hvcs-float{position:fixed;z-index:2147483640;width:360px;max-width:calc(100vw - 32px)}",
     "#hvcs-float.bottom-right{right:16px;bottom:16px}#hvcs-float.bottom-left{left:16px;bottom:16px}",
   ].join("");
@@ -168,6 +170,33 @@
       : base + "/api/v1/embed/deal/" + encodedTarget + "/status";
   }
 
+  function renderCreateIframe() {
+    if (!config.targetId) {
+      renderError("Missing client target. Provide the Heimdell client ID as targetId or data-target-id.");
+      return;
+    }
+
+    if (!config.embedToken) {
+      renderError("A short-lived creation embed token is required. Ask your CRM backend to issue one for this client.");
+      return;
+    }
+
+    var base = config.heimdellBaseUrl.replace(/\/$/, "");
+    var iframeUrl =
+      base +
+      "/embed/new/" +
+      encodeURIComponent(config.targetId) +
+      "?embedToken=" +
+      encodeURIComponent(config.embedToken) +
+      "&parentOrigin=" +
+      encodeURIComponent(window.location.origin);
+
+    root.innerHTML =
+      '<div class="hvcs-widget"><div class="hvcs-panel"><iframe class="hvcs-iframe" title="Heimdell new verification" src="' +
+      iframeUrl +
+      '"></iframe></div></div>';
+  }
+
   function loadStatus() {
     if (!config.targetId) {
       renderError("Missing widget target. Provide targetId, data-target-id, data-session-id, or data-client-ref.");
@@ -214,10 +243,14 @@
     document.body.appendChild(root);
   }
 
-  root.innerHTML = renderShell('<p class="hvcs-title">Loading consent status...</p>', false);
-  loadStatus();
+  if (isCreate) {
+    renderCreateIframe();
+  } else {
+    root.innerHTML = renderShell('<p class="hvcs-title">Loading consent status...</p>', false);
+    loadStatus();
+  }
 
-  if (config.refreshIntervalSeconds >= 60) {
+  if (!isCreate && config.refreshIntervalSeconds >= 60) {
     window.setInterval(loadStatus, config.refreshIntervalSeconds * 1000);
   }
 

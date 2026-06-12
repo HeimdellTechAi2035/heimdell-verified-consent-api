@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+﻿import type { Metadata } from "next";
 import Link from "next/link";
 import { DataTable, type DataTableColumn } from "@/components/dashboard/DataTable";
 import { DashboardHeader } from "@/components/dashboard/DashboardHeader";
@@ -23,24 +23,27 @@ export default function MySalesPage() {
 type MySaleRow = {
   id: string;
   clientReference: string | null;
+  customerName: string;
+  customerPhone: string | null;
+  customerEmail: string | null;
   productName: string;
   priceSummary: string;
   saleStatus: string;
   verificationStatus: string | null;
+  verificationId: string | null;
+  completedAt: Date | null;
+  certificateId: string | null;
   createdAt: Date;
 };
 
 const SELLER_COLUMNS: DataTableColumn<MySaleRow>[] = [
   {
-    header: "Reference",
+    header: "Customer",
     cell: (row) => (
       <div>
-        <p className="text-sm font-medium text-gray-900">
-          {row.clientReference ?? row.id}
-        </p>
-        {!row.clientReference && (
-          <p className="mt-0.5 font-mono text-xs text-gray-400">{row.id}</p>
-        )}
+        <p className="text-sm font-medium text-gray-900">{row.customerName}</p>
+        <p className="mt-0.5 text-xs text-gray-500">{row.customerPhone ?? "No phone"}</p>
+        <p className="mt-0.5 text-xs text-gray-400">{row.customerEmail ?? "No email"}</p>
       </div>
     ),
   },
@@ -60,7 +63,12 @@ const SELLER_COLUMNS: DataTableColumn<MySaleRow>[] = [
     header: "Verification",
     cell: (row) =>
       row.verificationStatus ? (
-        <StatusBadge status={row.verificationStatus} />
+        <div className="space-y-1">
+          <StatusBadge status={row.verificationStatus} />
+          <p className="text-xs text-gray-400">
+            {row.completedAt ? `Completed ${row.completedAt.toLocaleDateString("en-GB")}` : "Awaiting customer"}
+          </p>
+        </div>
       ) : (
         <span className="text-xs text-gray-400">Not created</span>
       ),
@@ -71,6 +79,27 @@ const SELLER_COLUMNS: DataTableColumn<MySaleRow>[] = [
       <span className="text-xs text-gray-500">
         {row.createdAt.toLocaleDateString("en-GB")}
       </span>
+    ),
+  },
+  {
+    header: "Links",
+    cell: (row) => (
+      <div className="flex flex-col gap-1">
+        <Link
+          className="text-xs font-semibold text-blue-600"
+          href={`/dashboard/my-sales/${encodeURIComponent(row.id)}`}
+        >
+          View sale
+        </Link>
+        {row.certificateId && (
+          <Link
+            className="text-xs font-semibold text-green-700"
+            href={`/dashboard/certificates/${encodeURIComponent(row.certificateId)}`}
+          >
+            View certificate
+          </Link>
+        )}
+      </div>
     ),
   },
 ];
@@ -109,12 +138,17 @@ async function MySalesContent() {
               </svg>
             </div>
             <h3 className="text-sm font-semibold text-gray-900">
-              No submitted sales yet
+              No sales yet
             </h3>
             <p className="mx-auto mt-2 max-w-lg text-sm leading-relaxed text-gray-500">
-              Sales will appear here only when intake includes your verified
-              `seller_email` and the sale is linked to your dashboard user.
+              Create a new verification to send a secure customer confirmation link.
             </p>
+            <Link
+              href="/dashboard/my-sales/new"
+              className="mt-4 inline-flex rounded-lg bg-blue-600 px-4 py-2 text-xs font-semibold text-white"
+            >
+              Create a new verification
+            </Link>
           </div>
         ) : (
           <DataTable
@@ -148,7 +182,7 @@ async function MySalesContent() {
         </p>
         <p className="mt-2 text-sm leading-relaxed text-gray-500">
           This landing page is primarily for seller-safe access. Users with
-          manager or admin roles can continue to use the existing tenant-scoped
+          manager or admin roles can continue to use the company
           Sales dashboard.
         </p>
       </div>
@@ -175,6 +209,9 @@ async function getSellerMySalesRows({
     select: {
       id: true,
       clientReference: true,
+      customerName: true,
+      customerPhone: true,
+      customerEmail: true,
       productName: true,
       productPrice: true,
       productFrequency: true,
@@ -184,7 +221,12 @@ async function getSellerMySalesRows({
         orderBy: { createdAt: "desc" },
         take: 1,
         select: {
+          id: true,
           status: true,
+          completedAt: true,
+          certificate: {
+            select: { id: true },
+          },
         },
       },
     },
@@ -193,6 +235,9 @@ async function getSellerMySalesRows({
   return sales.map((sale) => ({
     id: sale.id,
     clientReference: sale.clientReference,
+    customerName: sale.customerName,
+    customerPhone: sale.customerPhone,
+    customerEmail: sale.customerEmail,
     productName: sale.productName,
     priceSummary: formatPriceSummary(
       sale.productPrice.toNumber(),
@@ -200,6 +245,9 @@ async function getSellerMySalesRows({
     ),
     saleStatus: sale.status,
     verificationStatus: sale.verificationSessions[0]?.status ?? null,
+    verificationId: sale.verificationSessions[0]?.id ?? null,
+    completedAt: sale.verificationSessions[0]?.completedAt ?? null,
+    certificateId: sale.verificationSessions[0]?.certificate?.id ?? null,
     createdAt: sale.createdAt,
   }));
 }

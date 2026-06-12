@@ -1,4 +1,4 @@
-import Link from "next/link";
+﻿import Link from "next/link";
 import type { ReactNode } from "react";
 import { DashboardHeader } from "@/components/dashboard/DashboardHeader";
 import { DashboardRoleGate } from "@/components/dashboard/DashboardRoleGate";
@@ -13,6 +13,15 @@ import {
 type CertificateDetailPageProps = {
   params: Promise<{ id: string }>;
 };
+
+type CertificateDetailLoadResult =
+  | {
+      status: "loaded";
+      detail: DashboardCertificateDetail;
+      isSeller: boolean;
+    }
+  | { status: "not_found"; isSeller: boolean }
+  | { status: "error"; isSeller: boolean };
 
 function formatDateTime(value: string | null) {
   if (!value) {
@@ -47,6 +56,14 @@ function Field({
         {value ?? "Not recorded"}
       </dd>
     </div>
+  );
+}
+
+function TextBlock({ value }: { value: string | null }) {
+  return (
+    <p className="whitespace-pre-wrap text-sm leading-relaxed text-gray-700">
+      {value ?? "Not recorded"}
+    </p>
   );
 }
 
@@ -107,14 +124,19 @@ function ErrorState() {
   );
 }
 
-async function loadCertificateDetail(id: string) {
+async function loadCertificateDetail(id: string): Promise<CertificateDetailLoadResult> {
   const context = await requireOrganizationMembership();
+  const isSeller = context.membership.role === "SELLER";
 
   try {
-    return await getDashboardCertificateDetail(context, id);
+    return {
+      status: "loaded",
+      detail: await getDashboardCertificateDetail(context, id),
+      isSeller,
+    };
   } catch (error) {
     if (error instanceof DashboardCertificateDetailNotFoundError) {
-      return "not_found" as const;
+      return { status: "not_found", isSeller };
     }
 
     console.error("Dashboard certificate detail load failed", {
@@ -122,7 +144,7 @@ async function loadCertificateDetail(id: string) {
       userId: context.user.id,
       errorName: error instanceof Error ? error.name : "UnknownError",
     });
-    return null;
+    return { status: "error", isSeller };
   }
 }
 
@@ -134,15 +156,20 @@ function CertificateEvidenceSummary({
   return (
     <div className="space-y-6">
       <div className="rounded-xl border border-green-200 bg-green-50 px-5 py-4 text-sm text-green-800">
-        <span className="font-semibold">Live tenant-scoped evidence.</span>{" "}
+        <span className="font-semibold">Secure certificate evidence.</span>{" "}
         This page shows a structured certificate summary only. Export,
-        download, email, raw certificate JSON, customer contact details, tokens,
-        hashes, and full payment data remain hidden.
+        download, email, raw certificate data, secure link internals, and
+        full payment data remain hidden.
       </div>
 
       <Section title="Verification outcome">
         <dl className="grid gap-5 md:grid-cols-3">
           <Field label="Certificate ID" value={detail.id} mono />
+          <Field
+            label="Certificate version"
+            value={detail.certificateVersion}
+          />
+          <Field label="Client company" value={detail.sale.clientCompanyName} />
           <Field
             label="Verification session ID"
             value={detail.verification.sessionId}
@@ -165,8 +192,20 @@ function CertificateEvidenceSummary({
             value={formatDateTime(detail.verification.completedAt)}
           />
           <Field
+            label="Declined"
+            value={formatDateTime(detail.verification.declinedAt)}
+          />
+          <Field
             label="Certificate created"
             value={formatDateTime(detail.createdAt)}
+          />
+          <Field
+            label="Customer IP"
+            value={detail.verification.customerIpAddress}
+          />
+          <Field
+            label="Customer user agent"
+            value={detail.verification.customerUserAgent}
           />
         </dl>
       </Section>
@@ -175,6 +214,8 @@ function CertificateEvidenceSummary({
         <dl className="grid gap-5 md:grid-cols-3">
           <Field label="Sale ID" value={detail.sale.id} mono />
           <Field label="Client reference" value={detail.sale.clientReference} />
+          <Field label="Seller name" value={detail.sale.sellerName} />
+          <Field label="Seller email" value={detail.sale.sellerEmail} />
           <div>
             <dt className="text-xs font-semibold uppercase tracking-wide text-gray-400">
               Sale status
@@ -184,11 +225,26 @@ function CertificateEvidenceSummary({
             </dd>
           </div>
           <Field label="Product" value={detail.sale.productName} />
-          <Field label="Price summary" value={detail.sale.priceSummary} />
+          <Field label="Subscription price" value={detail.sale.subscriptionPrice} />
+          <Field
+            label="Subscription frequency"
+            value={detail.sale.subscriptionFrequency}
+          />
+          <Field label="Contract length" value={detail.sale.contractLength} />
+          <Field label="Sale channel" value={detail.sale.salesChannel} />
           <Field
             label="Cooling-off rights"
             value={detail.sale.coolingOffSummary}
           />
+        </dl>
+      </Section>
+
+      <Section title="Customer">
+        <dl className="grid gap-5 md:grid-cols-2">
+          <Field label="Full name" value={detail.sale.customerName} />
+          <Field label="Phone" value={detail.sale.customerPhone} />
+          <Field label="Email" value={detail.sale.customerEmail} />
+          <Field label="Address" value={detail.sale.customerAddress} />
         </dl>
       </Section>
 
@@ -217,8 +273,71 @@ function CertificateEvidenceSummary({
         </div>
       </Section>
 
+      <Section title="Policy and evidence snapshot">
+        {detail.policy.isLegacyFallback && (
+          <div className="mb-5 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            Legacy record: this certificate was created before full policy
+            snapshots were available. Heimdell is showing the best available
+            summaries and default wording.
+          </div>
+        )}
+        <div className="space-y-6">
+          <div className="grid gap-5 md:grid-cols-2">
+            <Field label="Policy version" value={detail.policy.policyVersion} />
+            <Field
+              label="Policy captured"
+              value={formatDateTime(detail.policy.capturedAt)}
+            />
+          </div>
+          <div>
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-400">
+              Full Terms and Conditions
+            </h3>
+            <div className="mt-2 rounded-lg border border-gray-100 bg-gray-50 p-4">
+              <TextBlock value={detail.policy.termsAndConditions} />
+            </div>
+          </div>
+          <div>
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-400">
+              Cooling-off Policy
+            </h3>
+            <div className="mt-2 rounded-lg border border-gray-100 bg-gray-50 p-4">
+              <TextBlock value={detail.policy.coolingOffPolicy} />
+            </div>
+          </div>
+          <div>
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-400">
+              Cancellation Instructions
+            </h3>
+            <div className="mt-2 rounded-lg border border-gray-100 bg-gray-50 p-4">
+              <TextBlock value={detail.policy.cancellationInstructions} />
+            </div>
+          </div>
+          <div>
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-400">
+              Privacy and Evidence Storage
+            </h3>
+            <div className="mt-2 rounded-lg border border-gray-100 bg-gray-50 p-4">
+              <TextBlock value={detail.policy.privacyEvidenceWording} />
+            </div>
+          </div>
+          <div>
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-400">
+              Direct Debit Guarantee
+            </h3>
+            <div className="mt-2 rounded-lg border border-gray-100 bg-gray-50 p-4">
+              <TextBlock value={detail.policy.directDebitGuaranteeWording} />
+            </div>
+          </div>
+        </div>
+      </Section>
+
       <Section title="Payment confirmation summary">
         <dl className="grid gap-5 md:grid-cols-2">
+          <Field
+            label="Bank"
+            value={detail.paymentSummary.bankName}
+          />
           <Field
             label="Account"
             value={detail.paymentSummary.accountEnding}
@@ -226,6 +345,14 @@ function CertificateEvidenceSummary({
           <Field
             label="Sort code"
             value={detail.paymentSummary.sortCodeMasked}
+          />
+          <Field
+            label="Account holder"
+            value={detail.paymentSummary.accountHolderName}
+          />
+          <Field
+            label="Mandate wording"
+            value={detail.policy.directDebitGuaranteeWording}
           />
         </dl>
       </Section>
@@ -264,6 +391,10 @@ function CertificateEvidenceSummary({
             label="Certificate version"
             value={detail.certificateVersion}
           />
+          <Field
+            label="Policy version"
+            value={detail.policyVersion}
+          />
         </dl>
       </Section>
     </div>
@@ -275,7 +406,11 @@ async function CertificateDetailContent({
 }: {
   id: string;
 }) {
-  const detail = await loadCertificateDetail(id);
+  const result = await loadCertificateDetail(id);
+  const detail = result.status === "loaded" ? result.detail : null;
+  const saleHref = result.isSeller
+    ? `/dashboard/my-sales/${encodeURIComponent(detail?.sale.id ?? "")}`
+    : `/dashboard/sales/${encodeURIComponent(detail?.sale.id ?? "")}`;
 
   return (
     <>
@@ -290,10 +425,10 @@ async function CertificateDetailContent({
 
       <DashboardHeader
         title="Certificate evidence"
-        subtitle="Protected tenant-scoped certificate detail."
+        subtitle="Protected certificate detail for this company."
       />
 
-      {detail === "not_found" ? (
+      {result.status === "not_found" ? (
         <NotFoundState />
       ) : detail ? (
         <>
@@ -309,6 +444,20 @@ async function CertificateDetailContent({
             >
               Download PDF
             </Link>
+            <Link
+              href={saleHref}
+              className="rounded-lg border border-blue-200 bg-white px-4 py-2 text-sm font-semibold text-blue-700"
+            >
+              Back to Sale
+            </Link>
+            {!result.isSeller && (
+              <Link
+                href={`/dashboard/verifications/${encodeURIComponent(detail.verification.sessionId)}`}
+                className="rounded-lg border border-blue-200 bg-white px-4 py-2 text-sm font-semibold text-blue-700"
+              >
+                Back to Verification
+              </Link>
+            )}
           </div>
           <CertificateEvidenceSummary detail={detail} />
         </>

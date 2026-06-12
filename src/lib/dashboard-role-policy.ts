@@ -44,6 +44,7 @@ const CERTIFICATE_VIEW_ROLES = [
   "OWNER",
   "ADMIN",
   "MANAGER",
+  "SELLER",
 ] as const satisfies readonly Role[];
 
 const PLATFORM_ADMIN_ROLES = [
@@ -54,6 +55,7 @@ const PLATFORM_ADMIN_ROLES = [
 const CLIENT_OWNER_AND_PLATFORM_ROLES = [
   "PLATFORM_ADMIN",
   "CLIENT_OWNER",
+  "CLIENT_MANAGER",
   "OWNER",
   "ADMIN",
 ] as const satisfies readonly Role[];

@@ -17,7 +17,14 @@ export type DashboardCertificateRow = {
   verificationSessionId: string;
   saleId: string;
   clientReference: string;
+  clientCompanyName: string;
+  customerName: string;
+  customerPhone: string | null;
+  customerEmail: string | null;
+  sellerName: string | null;
+  sellerEmail: string | null;
   productName: string;
+  priceSummary: string;
   verificationStatus: string;
   saleStatus: string;
   createdAt: string;
@@ -86,6 +93,15 @@ export function createProofHashFingerprint(proofHash: string): string {
   return `${proofHash.slice(0, 12)}...${proofHash.slice(-4)}`;
 }
 
+function formatPriceSummary(price: { toString(): string }, frequency: string | null) {
+  const amount = new Intl.NumberFormat("en-GB", {
+    style: "currency",
+    currency: "GBP",
+  }).format(Number(price.toString()));
+
+  return frequency ? `${amount} / ${frequency}` : amount;
+}
+
 function buildCreatedAtFilter(params: {
   createdFrom?: string | null;
   createdTo?: string | null;
@@ -105,6 +121,7 @@ function buildCreatedAtFilter(params: {
 
 export function buildOrganizationCertificatesWhere(params: {
   organizationId: string;
+  submittedByUserId?: string | null;
   search?: string | null;
   createdFrom?: string | null;
   createdTo?: string | null;
@@ -120,6 +137,9 @@ export function buildOrganizationCertificatesWhere(params: {
         client: {
           organizationId: params.organizationId,
         },
+        ...(params.submittedByUserId
+          ? { submittedByUserId: params.submittedByUserId }
+          : {}),
       },
     },
     ...(createdAt ? { createdAt } : {}),
@@ -174,6 +194,8 @@ export async function getDashboardCertificatesData(
   const createdTo = normalizeDashboardCertificateDate(filters.createdTo);
   const where = buildOrganizationCertificatesWhere({
     organizationId,
+    submittedByUserId:
+      context.membership.role === "SELLER" ? context.user.id : null,
     search,
     createdFrom,
     createdTo,
@@ -201,8 +223,22 @@ export async function getDashboardCertificatesData(
               select: {
                 id: true,
                 clientReference: true,
+                customerName: true,
+                customerPhone: true,
+                customerEmail: true,
                 productName: true,
+                productPrice: true,
+                productFrequency: true,
                 status: true,
+                client: {
+                  select: { name: true },
+                },
+                submittedByUser: {
+                  select: {
+                    name: true,
+                    email: true,
+                  },
+                },
               },
             },
           },
@@ -224,7 +260,19 @@ export async function getDashboardCertificatesData(
       clientReference:
         certificate.verificationSession.sale.clientReference ??
         "Unreferenced sale",
+      clientCompanyName: certificate.verificationSession.sale.client.name,
+      customerName: certificate.verificationSession.sale.customerName,
+      customerPhone: certificate.verificationSession.sale.customerPhone,
+      customerEmail: certificate.verificationSession.sale.customerEmail,
+      sellerName:
+        certificate.verificationSession.sale.submittedByUser?.name ?? null,
+      sellerEmail:
+        certificate.verificationSession.sale.submittedByUser?.email ?? null,
       productName: certificate.verificationSession.sale.productName,
+      priceSummary: formatPriceSummary(
+        certificate.verificationSession.sale.productPrice,
+        certificate.verificationSession.sale.productFrequency
+      ),
       verificationStatus: certificate.verificationSession.status,
       saleStatus: certificate.verificationSession.sale.status,
       createdAt: certificate.createdAt.toISOString(),

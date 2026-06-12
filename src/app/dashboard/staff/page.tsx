@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+﻿import type { Metadata } from "next";
 import Link from "next/link";
 import { DashboardHeader } from "@/components/dashboard/DashboardHeader";
 import { DashboardRoleGate } from "@/components/dashboard/DashboardRoleGate";
@@ -113,7 +113,7 @@ async function StaffPageContent({ created }: { created: boolean }) {
     <>
       <DashboardHeader
         title="Staff"
-        subtitle="Manage dashboard users for the current organization. Staff records are tenant-scoped."
+        subtitle="Manage dashboard users for the current organization."
         action={
           <Link
             href="/dashboard/staff/new"

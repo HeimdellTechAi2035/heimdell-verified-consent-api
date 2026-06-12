@@ -15,7 +15,13 @@ export type DashboardVerificationRow = {
   id: string;
   saleId: string;
   clientReference: string;
+  customerName: string;
+  customerPhone: string | null;
+  customerEmail: string | null;
+  sellerName: string | null;
+  sellerEmail: string | null;
   productName: string;
+  priceSummary: string;
   verificationStatus: VerificationStatus;
   saleStatus: string;
   createdAt: string;
@@ -23,6 +29,13 @@ export type DashboardVerificationRow = {
   completedAt: string | null;
   declinedAt: string | null;
   certificateId: string | null;
+};
+
+export type DashboardVerificationDetail = DashboardVerificationRow & {
+  customerAddress: string | null;
+  openedAt: string | null;
+  termsSummary: string | null;
+  policiesSummary: string | null;
 };
 
 export type DashboardVerificationsData = {
@@ -115,6 +128,15 @@ export function buildOrganizationVerificationsWhere(params: {
   };
 }
 
+function formatPriceSummary(price: { toString(): string }, frequency: string | null) {
+  const amount = new Intl.NumberFormat("en-GB", {
+    style: "currency",
+    currency: "GBP",
+  }).format(Number(price.toString()));
+
+  return frequency ? `${amount} / ${frequency}` : amount;
+}
+
 export async function getDashboardVerificationsData(
   context: OrganizationContext,
   filters: DashboardVerificationsFilters = {},
@@ -155,8 +177,19 @@ export async function getDashboardVerificationsData(
           select: {
             id: true,
             clientReference: true,
+            customerName: true,
+            customerPhone: true,
+            customerEmail: true,
             productName: true,
+            productPrice: true,
+            productFrequency: true,
             status: true,
+            submittedByUser: {
+              select: {
+                name: true,
+                email: true,
+              },
+            },
           },
         },
         certificate: {
@@ -178,7 +211,16 @@ export async function getDashboardVerificationsData(
       id: session.id,
       saleId: session.sale.id,
       clientReference: session.sale.clientReference ?? "Unreferenced sale",
+      customerName: session.sale.customerName,
+      customerPhone: session.sale.customerPhone,
+      customerEmail: session.sale.customerEmail,
+      sellerName: session.sale.submittedByUser?.name ?? null,
+      sellerEmail: session.sale.submittedByUser?.email ?? null,
       productName: session.sale.productName,
+      priceSummary: formatPriceSummary(
+        session.sale.productPrice,
+        session.sale.productFrequency
+      ),
       verificationStatus: session.status,
       saleStatus: session.sale.status,
       createdAt: session.createdAt.toISOString(),
@@ -208,4 +250,92 @@ export async function getDashboardVerificationsData(
   });
 
   return data;
+}
+
+export async function getDashboardVerificationDetail(
+  context: OrganizationContext,
+  verificationId: string,
+  prisma: DashboardVerificationsDb = db
+): Promise<DashboardVerificationDetail | null> {
+  const normalizedId = verificationId.trim();
+
+  if (!context.organization.id || !normalizedId) {
+    return null;
+  }
+
+  const session = await prisma.verificationSession.findFirst({
+    where: {
+      id: normalizedId,
+      sale: {
+        client: {
+          organizationId: context.organization.id,
+        },
+      },
+    },
+    select: {
+      id: true,
+      status: true,
+      createdAt: true,
+      expiresAt: true,
+      openedAt: true,
+      completedAt: true,
+      declinedAt: true,
+      certificate: {
+        select: { id: true },
+      },
+      sale: {
+        select: {
+          id: true,
+          clientReference: true,
+          customerName: true,
+          customerPhone: true,
+          customerEmail: true,
+          customerAddress: true,
+          productName: true,
+          productPrice: true,
+          productFrequency: true,
+          productTerms: true,
+          productPolicies: true,
+          status: true,
+          submittedByUser: {
+            select: {
+              name: true,
+              email: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (!session) {
+    return null;
+  }
+
+  return {
+    id: session.id,
+    saleId: session.sale.id,
+    clientReference: session.sale.clientReference ?? "Unreferenced sale",
+    customerName: session.sale.customerName,
+    customerPhone: session.sale.customerPhone,
+    customerEmail: session.sale.customerEmail,
+    customerAddress: session.sale.customerAddress,
+    sellerName: session.sale.submittedByUser?.name ?? null,
+    sellerEmail: session.sale.submittedByUser?.email ?? null,
+    productName: session.sale.productName,
+    priceSummary: formatPriceSummary(
+      session.sale.productPrice,
+      session.sale.productFrequency
+    ),
+    verificationStatus: session.status,
+    saleStatus: session.sale.status,
+    createdAt: session.createdAt.toISOString(),
+    expiresAt: session.expiresAt.toISOString(),
+    openedAt: session.openedAt?.toISOString() ?? null,
+    completedAt: session.completedAt?.toISOString() ?? null,
+    declinedAt: session.declinedAt?.toISOString() ?? null,
+    certificateId: session.certificate?.id ?? null,
+    termsSummary: session.sale.productTerms,
+    policiesSummary: session.sale.productPolicies,
+  };
 }

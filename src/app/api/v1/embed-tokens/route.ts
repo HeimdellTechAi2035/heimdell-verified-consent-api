@@ -11,7 +11,7 @@ import {
 } from "@/lib/rate-limit";
 
 const embedTokenRequestSchema = z.object({
-  type: z.enum(["verification_status", "deal_status"]),
+  type: z.enum(["verification_status", "deal_status", "verification_create"]),
   target: z.string().min(1).max(160),
 });
 
@@ -82,7 +82,17 @@ export async function POST(req: NextRequest) {
   });
 
   const exists =
-    type === "verification_status"
+    type === "verification_create"
+      ? await db.client.findFirst({
+          where: {
+            id: target,
+            status: "ACTIVE",
+            ...(auth.clientId ? { id: auth.clientId } : {}),
+            ...(auth.organizationId ? { organizationId: auth.organizationId } : {}),
+          },
+          select: { id: true },
+        })
+      : type === "verification_status"
       ? await db.verificationSession.findFirst({
           where: {
             id: target,

@@ -3,6 +3,10 @@
 import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { requireDashboardUser } from "@/lib/dashboard-auth";
+import {
+  getPostPasswordChangeDashboardDestination,
+  revalidateDashboardAuthPaths,
+} from "@/lib/dashboard-redirects";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 
 export async function changeTemporaryPassword(formData: FormData) {
@@ -52,5 +56,10 @@ export async function changeTemporaryPassword(formData: FormData) {
     data: { mustChangePassword: false },
   });
 
-  redirect("/dashboard");
+  revalidateDashboardAuthPaths();
+  const destination = await getPostPasswordChangeDashboardDestination({
+    userId: user.id,
+  });
+
+  redirect(destination);
 }

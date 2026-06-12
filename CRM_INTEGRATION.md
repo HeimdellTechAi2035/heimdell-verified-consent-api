@@ -173,6 +173,81 @@ const tokenResponse = await fetch("https://telecomcompliance.uk/api/v1/embed-tok
 const { token, expiresAt } = await tokenResponse.json();
 ```
 
+### Real embedded verification creation flow
+
+For a CRM sidebar that lets a seller create a verification without leaving the CRM, issue a
+`verification_create` token from the CRM backend. The token target is the Heimdell `clientId`;
+it is short-lived and signed, and it authorises only creation for that client.
+
+Backend token request:
+
+```ts
+const tokenResponse = await fetch("https://telecomcompliance.uk/api/v1/embed-tokens", {
+  method: "POST",
+  headers: {
+    "content-type": "application/json",
+    "x-api-key": process.env.HEIMDELL_API_KEY,
+  },
+  body: JSON.stringify({
+    type: "verification_create",
+    target: heimdellClientId,
+  }),
+});
+```
+
+iframe embed:
+
+```html
+<iframe
+  src="https://telecomcompliance.uk/embed/new/{heimdellClientId}?embedToken={shortLivedCreateToken}&parentOrigin=https%3A%2F%2Fcrm.example.com"
+  width="100%"
+  height="760"
+  style="border: 0;"
+  title="Create Heimdell Verification"
+></iframe>
+```
+
+JavaScript widget create mode:
+
+```html
+<script
+  src="https://telecomcompliance.uk/widget.js"
+  data-mode="create"
+  data-target-id="{heimdellClientId}"
+  data-embed-token="{shortLivedCreateToken}"
+  data-container="#heimdell-panel"
+></script>
+```
+
+The embedded creation route posts to `POST /api/v1/embed/verifications?clientId={heimdellClientId}`
+with the signed create token in the `Authorization: Bearer ...` header. Heimdell validates the
+token, tenant, client, allowed browser origin, and input fields server-side before creating:
+
+- Sale
+- DirectDebitMandate
+- VerificationSession
+- policy wording snapshot
+- queued/customer notification records where configured
+
+The response contains only safe data:
+
+```json
+{
+  "ok": true,
+  "sale_id": "sale_xxx",
+  "client_reference": "CRM-DEAL-123",
+  "verification_session_id": "sess_xxx",
+  "verification_status": "PENDING",
+  "verification_url": "https://telecomcompliance.uk/v/raw-token",
+  "status_embed_token": "short-lived-session-status-token",
+  "certificate_id": null,
+  "certificate_url": null
+}
+```
+
+The raw verification URL is returned once so the seller can copy or send it. Heimdell does not
+store the raw token; it stores only the token hash.
+
 Frontend widget example:
 
 ```html
@@ -210,8 +285,23 @@ The widget displays:
 - Product name
 - Safe timestamps
 - Certificate ID when available
+- Certificate URL when available
 
 It must not display customer contact details, bank/payment data, raw verification tokens, hashes, raw API keys, or full certificate JSON.
+
+### CRM postMessage events
+
+The embedded creation page can send safe events to the CRM parent page when `parentOrigin` is
+configured and matches `ALLOWED_EMBED_ORIGINS`:
+
+| Event | Payload |
+|---|---|
+| `heimdell:verification_created` | sale ID, verification session ID, status, one-time verification URL |
+| `heimdell:verification_status_changed` | sale ID, session ID, status, certificate ID, completion/decline timestamps |
+| `heimdell:certificate_available` | certificate ID and verification session ID |
+
+Do not use wildcard parent origins for sensitive data. Add trusted CRM origins to
+`ALLOWED_EMBED_ORIGINS`, and pass that exact origin as the iframe `parentOrigin`.
 
 ### Option B: JavaScript widget
 

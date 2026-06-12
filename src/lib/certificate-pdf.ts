@@ -29,6 +29,10 @@ function formatConfirmation(value: boolean | string | null): string {
 }
 
 function wrapLine(line: string, maxLength = 92): string[] {
+  if (line.includes("\n")) {
+    return line.split(/\r?\n/).flatMap((part) => wrapLine(part, maxLength));
+  }
+
   if (line.length <= maxLength) {
     return [line];
   }
@@ -54,52 +58,94 @@ function wrapLine(line: string, maxLength = 92): string[] {
   return lines;
 }
 
+function section(title: string, lines: string[]): string[] {
+  return ["", title, ...lines];
+}
+
 export function buildCertificatePdfLines(
   detail: DashboardCertificateDetail
 ): string[] {
   const lines: string[] = [
     "Heimdell Verified Consent",
-    "Protected Certificate Evidence Summary",
-    "",
-    "Verification outcome",
-    `Certificate ID: ${detail.id}`,
-    `Verification session ID: ${detail.verification.sessionId}`,
-    `Verification status: ${detail.verification.status}`,
-    `Certificate created: ${formatDateTime(detail.createdAt)}`,
-    `Completed: ${formatDateTime(detail.verification.completedAt)}`,
-    "",
-    "Sale details",
-    `Sale ID: ${detail.sale.id}`,
-    `Client reference: ${detail.sale.clientReference}`,
-    `Sale status: ${detail.sale.status}`,
-    `Product: ${detail.sale.productName}`,
-    `Price summary: ${detail.sale.priceSummary}`,
-    `Cooling-off summary: ${detail.sale.coolingOffSummary ?? "Not recorded"}`,
-    "",
-    "Terms acknowledged",
-    `Terms summary: ${detail.sale.termsSummary ?? "Not recorded"}`,
-    `Policies summary: ${detail.sale.policiesSummary ?? "Not recorded"}`,
-    "",
-    "Consent confirmations",
-    ...detail.confirmations.map(
-      (confirmation) =>
-        `${confirmation.label}: ${formatConfirmation(confirmation.value)}`
-    ),
-    "",
-    "Payment confirmation summary",
-    `Account: ${detail.paymentSummary.accountEnding ?? "Not recorded"}`,
-    `Sort code: ${detail.paymentSummary.sortCodeMasked ?? "Not recorded"}`,
-    "",
-    "Timeline",
-    ...detail.timeline.map((item) => `${formatDateTime(item.at)} - ${item.type}`),
-    "",
-    "Integrity fingerprint",
-    `Proof hash fingerprint: ${detail.proofHashFingerprint}`,
-    `Full proof hash: ${detail.proofHash}`,
-    `Certificate version: ${detail.certificateVersion ?? "Not recorded"}`,
-    "",
-    "Footer",
-    "This PDF is a protected evidence summary generated from Heimdell Verified Consent records. It is not legal advice.",
+    "Certificate evidence record",
+    ...section("Certificate reference", [
+      `Certificate reference: ${detail.id}`,
+      `Certificate status: ${detail.verification.status}`,
+      `Certificate version: ${detail.certificateVersion ?? "Not recorded"}`,
+      `Proof hash: ${detail.proofHash}`,
+      `Created: ${formatDateTime(detail.createdAt)}`,
+    ]),
+    ...section("Client and seller", [
+      `Client company: ${detail.sale.clientCompanyName}`,
+      `Client account/name: ${detail.sale.clientCompanyName}`,
+      `Seller name: ${detail.sale.sellerName ?? "Not recorded"}`,
+      `Seller email: ${detail.sale.sellerEmail ?? "Not recorded"}`,
+      `Client reference: ${detail.sale.clientReference}`,
+    ]),
+    ...section("Customer details", [
+      `Customer full name: ${detail.sale.customerName}`,
+      `Customer phone: ${detail.sale.customerPhone ?? "Not recorded"}`,
+      `Customer email: ${detail.sale.customerEmail ?? "Not recorded"}`,
+      `Customer address: ${detail.sale.customerAddress ?? "Not recorded"}`,
+      `Customer IP: ${detail.verification.customerIpAddress ?? "Not recorded"}`,
+      `Customer user agent: ${detail.verification.customerUserAgent ?? "Not recorded"}`,
+    ]),
+    ...section("Product and sale", [
+      `Product/service: ${detail.sale.productName}`,
+      `Subscription price: ${detail.sale.subscriptionPrice}`,
+      `Subscription frequency: ${detail.sale.subscriptionFrequency ?? "Not recorded"}`,
+      `Contract length: ${detail.sale.contractLength ?? "Not recorded"}`,
+      `Sale channel: ${detail.sale.salesChannel ?? "Not recorded"}`,
+      `Sale status: ${detail.sale.status}`,
+    ]),
+    ...section("Verification timestamps", [
+      `Verification session: ${detail.verification.sessionId}`,
+      `Session created: ${formatDateTime(detail.verification.createdAt)}`,
+      `Completed: ${formatDateTime(detail.verification.completedAt)}`,
+      `Declined: ${formatDateTime(detail.verification.declinedAt)}`,
+      `Expires: ${formatDateTime(detail.verification.expiresAt)}`,
+    ]),
+    ...section("Payment evidence masked", [
+      `Bank: ${detail.paymentSummary.bankName ?? "Not recorded"}`,
+      `Account holder: ${detail.paymentSummary.accountHolderName ?? "Not recorded"}`,
+      `Sort code: ${detail.paymentSummary.sortCodeMasked ?? "Not recorded"}`,
+      `Account number: ${detail.paymentSummary.accountEnding ?? "Not recorded"}`,
+      `Direct Debit wording: ${detail.policy.directDebitGuaranteeWording}`,
+    ]),
+    ...section("Subscription and policy summaries", [
+      `Subscription terms summary: ${detail.sale.termsSummary ?? "Not recorded"}`,
+      `Policies summary: ${detail.sale.policiesSummary ?? "Not recorded"}`,
+      `Legacy record: ${detail.policy.isLegacyFallback ? "Yes - fallback wording shown" : "No"}`,
+      `Policy version: ${detail.policy.policyVersion}`,
+      `Policy captured at: ${formatDateTime(detail.policy.capturedAt)}`,
+    ]),
+    ...section("Full Terms and Conditions snapshot", [
+      detail.policy.termsAndConditions,
+    ]),
+    ...section("Full Cooling-off Policy snapshot", [
+      detail.policy.coolingOffPolicy,
+    ]),
+    ...section("Full Cancellation Instructions snapshot", [
+      detail.policy.cancellationInstructions,
+    ]),
+    ...section("Full Privacy and Evidence Storage snapshot", [
+      detail.policy.privacyEvidenceWording,
+    ]),
+    ...section("Full Direct Debit Guarantee snapshot", [
+      detail.policy.directDebitGuaranteeWording,
+    ]),
+    ...section("Consent confirmations", [
+      ...detail.confirmations.map(
+        (confirmation) =>
+          `${confirmation.label}: ${formatConfirmation(confirmation.value)}`
+      ),
+    ]),
+    ...section("Timeline", [
+      ...detail.timeline.map((item) => `${formatDateTime(item.at)} - ${item.type}`),
+    ]),
+    ...section("Footer", [
+      "This certificate is a human-readable evidence record of the Heimdell Verified Consent verification. It summarises the customer, sale, payment mandate, policy wording, consent confirmations, timestamps, and proof hash captured for audit and dispute resolution.",
+    ]),
   ];
 
   return lines.flatMap((line) => wrapLine(line));

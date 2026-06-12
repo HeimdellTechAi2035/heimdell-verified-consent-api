@@ -7,7 +7,7 @@ import { WebhookEndpointManager } from "@/components/dashboard/WebhookEndpointMa
 import { requireOrganizationMembership } from "@/lib/dashboard-auth";
 import { getDashboardWebhookSettingsData } from "@/lib/dashboard-webhook-settings";
 
-type IntegrationStatus = "available" | "coming_soon" | "planned";
+type IntegrationStatus = "available" | "setup_required";
 
 type Integration = {
   name: string;
@@ -22,14 +22,14 @@ const INTEGRATIONS: Integration[] = [
     name: "Webhook Delivery",
     category: "Core",
     description:
-      "HMAC-SHA256 signed outbound webhooks with durable retry tracking and tenant-scoped endpoint configuration.",
+      "Signed outbound webhooks with durable retry tracking and company endpoint configuration.",
     status: "available",
   },
   {
     name: "CRM Embed -- Verification",
     category: "Embed",
     description:
-      "Compact verification status panel embeddable in any CRM iframe with injected short-lived embed tokens.",
+      "Compact verification status panel embeddable in a CRM iframe with short-lived signed access.",
     status: "available",
     embedRoute: "/embed/verification/[sessionId]",
   },
@@ -37,7 +37,7 @@ const INTEGRATIONS: Integration[] = [
     name: "CRM Embed -- Deal",
     category: "Embed",
     description:
-      "Deal-level consent status panel for CRM deal surfaces with injected short-lived embed tokens.",
+      "Deal-level consent status panel for CRM deal surfaces with short-lived signed access.",
     status: "available",
     embedRoute: "/embed/deal/[clientReference]",
   },
@@ -45,29 +45,28 @@ const INTEGRATIONS: Integration[] = [
     name: "SMS Provider (Twilio / etc.)",
     category: "Notifications",
     description:
-      "Deliver verification links via SMS. Notification records are queued; provider wiring is planned.",
-    status: "planned",
+      "Deliver verification links by SMS when your live notification account is configured.",
+    status: "setup_required",
   },
   {
     name: "Email Provider (SendGrid / etc.)",
     category: "Notifications",
     description:
       "Deliver verification links and completion confirmations via email.",
-    status: "planned",
+    status: "setup_required",
   },
   {
     name: "n8n / Workflow Automation",
     category: "Automation",
     description:
       "Trigger n8n workflows on verification events via outbound webhooks.",
-    status: "planned",
+    status: "setup_required",
   },
 ];
 
 const STATUS_LABELS: Record<IntegrationStatus, { label: string; style: string }> = {
   available: { label: "Available", style: "bg-green-100 text-green-700" },
-  coming_soon: { label: "Coming soon", style: "bg-blue-100 text-blue-700" },
-  planned: { label: "Planned", style: "bg-gray-100 text-gray-500" },
+  setup_required: { label: "Setup required", style: "bg-amber-100 text-amber-700" },
 };
 
 const CATEGORY_COLORS: Record<string, string> = {
@@ -117,7 +116,7 @@ const PATTERNS = [
     badge: "Available",
     badgeStyle: "bg-green-100 text-green-700",
     description:
-      "Embed the verification or deal status panel directly in your CRM using a short-lived embed token issued by your backend.",
+      "Embed the verification or deal status panel directly in your CRM using short-lived signed access issued by your backend.",
     code:
       '<iframe src="https://your-hvcs-domain/embed/deal/{clientReference}?embedToken={token}" width="100%" height="280" />',
   },
@@ -126,7 +125,7 @@ const PATTERNS = [
     badge: "Available",
     badgeStyle: "bg-green-100 text-green-700",
     description:
-      "Mount the browser widget in a CRM panel using injected embedToken configuration. Never put x-api-key in browser code.",
+      "Mount the browser widget in a CRM panel using signed access from your backend. Never put a private API key in browser code.",
     code:
       '<script src="https://your-hvcs-domain/widget.js" data-mode="deal" data-target-id="{clientReference}" data-embed-token="{token}"></script>',
   },
@@ -143,7 +142,7 @@ const PATTERNS = [
     badge: "Advanced",
     badgeStyle: "bg-blue-100 text-blue-700",
     description:
-      "Call HVCS API endpoints from your backend using x-api-key. Use intake to initiate and certificate retrieval to fetch compliance proofs.",
+      "Connect your backend to Heimdell to initiate verifications and retrieve certificate proof records.",
     code: null,
   },
 ];

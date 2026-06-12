@@ -21,6 +21,7 @@ import {
   maskAccountNumber,
 } from "@/lib/crypto";
 import { sendVerificationLinkNotification } from "@/lib/notifications";
+import { buildPolicySnapshotForClient } from "@/lib/client-policy";
 import {
   enforceRateLimit,
   RATE_LIMIT_POLICIES,
@@ -148,6 +149,10 @@ export async function POST(req: NextRequest) {
       }
       throw err;
     }
+    const policySnapshot = await buildPolicySnapshotForClient({
+      clientId: client.id,
+      coolingOffDays: data.consent?.cooling_off_days ?? null,
+    });
 
     // Prisma nested create — Sale + DirectDebitMandate + VerificationSession
     // are written in a single implicit database transaction.
@@ -173,6 +178,7 @@ export async function POST(req: NextRequest) {
         salesChannel: data.sales_channel ?? null,
         aiMarketingOptIn: data.consent?.ai_marketing_opt_in ?? null,
         coolingOffDays: data.consent?.cooling_off_days ?? null,
+        policySnapshot,
 
         // Status defaults to PENDING via schema
 

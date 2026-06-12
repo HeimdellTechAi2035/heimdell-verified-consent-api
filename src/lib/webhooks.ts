@@ -188,12 +188,17 @@ export async function queueWebhookDelivery(
         channel: "WEBHOOK",
         recipient: params.clientWebhookUrl,
         status: params.webhookSecret ? "QUEUED" : "SKIPPED",
+        notificationType: params.event,
+        subject: `Webhook: ${params.event}`,
+        messagePreview: `Signed webhook delivery for ${params.event}`,
         // Store event type as hint so the delivery worker knows what to build
         providerId: params.event,
+        providerMessageId: null,
         errorMessage: params.webhookSecret
           ? null
           : "Webhook URL configured but no webhook secret is set — payload cannot be signed",
         sentAt: null,
+        failedAt: null,
         deliveryId: randomUUID(),
         attempts: 0,
         maxAttempts: 5,

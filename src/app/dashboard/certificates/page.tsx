@@ -1,4 +1,4 @@
-// Dashboard -- Certificates page.
+﻿// Dashboard -- Certificates page.
 // Live tenant-scoped certificate metadata for the authenticated organization.
 
 import Link from "next/link";
@@ -38,28 +38,37 @@ const COLUMNS: DataTableColumn<DashboardCertificateRow>[] = [
       <div>
         <p className="font-mono text-xs text-gray-500">{r.id}</p>
         <p className="font-mono text-xs text-gray-400 mt-0.5">
-          Session {r.verificationSessionId}
+          {r.clientCompanyName}
         </p>
       </div>
     ),
   },
   {
-    header: "Sale",
+    header: "Customer",
     cell: (r) => (
       <div>
-        <p className="font-mono text-xs text-gray-500">{r.saleId}</p>
-        <p className="font-mono text-xs text-gray-400 mt-0.5">
-          {r.clientReference}
-        </p>
+        <p className="text-sm font-medium text-gray-900">{r.customerName}</p>
+        <p className="mt-0.5 text-xs text-gray-500">{r.customerPhone ?? "No phone"}</p>
+        <p className="mt-0.5 text-xs text-gray-400">{r.customerEmail ?? "No email"}</p>
+      </div>
+    ),
+  },
+  {
+    header: "Seller",
+    cell: (r) => (
+      <div>
+        <p className="text-sm text-gray-700">{r.sellerName ?? "Unassigned"}</p>
+        <p className="mt-0.5 text-xs text-gray-400">{r.sellerEmail ?? "No seller email"}</p>
       </div>
     ),
   },
   {
     header: "Product",
     cell: (r) => (
-      <span className="text-sm font-medium text-gray-900">
-        {r.productName}
-      </span>
+      <div>
+        <p className="text-sm font-medium text-gray-900">{r.productName}</p>
+        <p className="mt-0.5 text-xs text-gray-400">{r.priceSummary}</p>
+      </div>
     ),
   },
   {
@@ -69,22 +78,6 @@ const COLUMNS: DataTableColumn<DashboardCertificateRow>[] = [
   {
     header: "Sale Status",
     cell: (r) => <StatusBadge status={r.saleStatus} />,
-  },
-  {
-    header: "Proof",
-    cell: (r) => (
-      <span className="font-mono text-xs text-gray-500 bg-gray-50 px-2 py-0.5 rounded border border-gray-100">
-        {r.proofHashFingerprint}
-      </span>
-    ),
-  },
-  {
-    header: "Version",
-    cell: (r) => (
-      <span className="text-xs text-gray-500">
-        {r.certificateVersion ?? "Not recorded"}
-      </span>
-    ),
   },
   {
     header: "Completed",
@@ -105,12 +98,20 @@ const COLUMNS: DataTableColumn<DashboardCertificateRow>[] = [
   {
     header: "Action",
     cell: (r) => (
-      <Link
-        className="text-xs font-semibold text-blue-600"
-        href={`/dashboard/certificates/${encodeURIComponent(r.id)}`}
-      >
-        View certificate
-      </Link>
+      <div className="flex flex-col gap-1">
+        <Link
+          className="text-xs font-semibold text-blue-600"
+          href={`/dashboard/certificates/${encodeURIComponent(r.id)}`}
+        >
+          View certificate
+        </Link>
+        <Link
+          className="text-xs font-semibold text-gray-600"
+          href={`/dashboard/sales/${encodeURIComponent(r.saleId)}`}
+        >
+          View sale
+        </Link>
+      </div>
     ),
   },
 ];
@@ -166,10 +167,10 @@ function LiveDataIndicator() {
         />
       </svg>
       <p className="text-sm text-green-800">
-        <span className="font-semibold">Live tenant-scoped data.</span>{" "}
+        <span className="font-semibold">Secure company data.</span>{" "}
         Certificate metadata is loaded server-side for your organization only.
-        Full certificate JSON, customer contact details, tokens, hashes, and
-        payment details are not shown.
+        Secure link internals, full account numbers, and encrypted payment
+        values are not shown.
       </p>
     </div>
   );
@@ -179,7 +180,7 @@ function EmptyState() {
   return (
     <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 text-center">
       <h3 className="text-sm font-semibold text-gray-700">
-        No certificates found
+        No certificates yet
       </h3>
       <p className="text-xs text-gray-400 mt-1">
         Certificates will appear after customers complete verification sessions.
@@ -248,7 +249,7 @@ function PaginationControls({ data }: { data: DashboardCertificatesData }) {
   return (
     <div className="mt-4 flex items-center justify-between gap-4 text-xs text-gray-500">
       <span>
-        Page {data.pagination.page} of {data.pagination.totalPages} ·{" "}
+        Page {data.pagination.page} of {data.pagination.totalPages} Â·{" "}
         {data.pagination.totalRows} certificates
       </span>
       <div className="flex items-center gap-2">
@@ -332,7 +333,7 @@ async function CertificatesContent({
 
       <DashboardHeader
         title="Certificates"
-        subtitle="Live certificate metadata for this organization."
+        subtitle="Completed verification proof and customer evidence summaries."
       />
 
       {!data ? (
@@ -345,7 +346,7 @@ async function CertificatesContent({
               <DataTable
                 columns={COLUMNS}
                 rows={data.rows}
-                footer="Showing safe tenant-scoped certificate metadata only. Full certificate JSON is not loaded on this page."
+                footer="Showing safe certificate summary fields only. Full evidence is available from each certificate detail page."
               />
               <PaginationControls data={data} />
             </>

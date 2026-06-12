@@ -29,6 +29,8 @@ export default async function LoginPage({ searchParams }: Props) {
       ? "Enter your password."
       : params.error === "signin-failed"
       ? "Sign in failed. Confirm the user was invited in Supabase Auth and has a password set."
+      : params.error === "session-expired"
+      ? "Your sign-in session could not be confirmed. Please sign in again."
       : null;
 
   return (

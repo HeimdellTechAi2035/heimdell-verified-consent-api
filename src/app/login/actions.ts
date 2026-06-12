@@ -2,6 +2,10 @@
 
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
+import {
+  getPostLoginDashboardDestination,
+  revalidateDashboardAuthPaths,
+} from "@/lib/dashboard-redirects";
 
 export async function signInWithPassword(formData: FormData) {
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
@@ -16,7 +20,7 @@ export async function signInWithPassword(formData: FormData) {
   }
 
   const supabase = await createSupabaseServerClient();
-  const { error } = await supabase.auth.signInWithPassword({
+  const { data, error } = await supabase.auth.signInWithPassword({
     email,
     password,
   });
@@ -25,7 +29,16 @@ export async function signInWithPassword(formData: FormData) {
     redirect("/login?error=signin-failed");
   }
 
-  redirect("/dashboard");
+  if (!data.user) {
+    redirect("/login?error=session-expired");
+  }
+
+  revalidateDashboardAuthPaths();
+  const destination = await getPostLoginDashboardDestination({
+    externalAuthId: data.user.id,
+  });
+
+  redirect(destination);
 }
 
 export async function signInWithEmail(formData: FormData) {

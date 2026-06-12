@@ -1,4 +1,4 @@
-// Dashboard -- Verifications page.
+﻿// Dashboard -- Verifications page.
 // Live tenant-scoped verification sessions for the authenticated organization.
 
 import Link from "next/link";
@@ -33,30 +33,31 @@ function formatDateTime(value: string | null) {
 
 const COLUMNS: DataTableColumn<DashboardVerificationRow>[] = [
   {
-    header: "Session",
+    header: "Customer",
     cell: (r) => (
       <div>
-        <p className="font-mono text-xs text-gray-500">{r.id}</p>
-        <p className="font-mono text-xs text-gray-400 mt-0.5">
-          Sale {r.saleId}
-        </p>
+        <p className="text-sm font-medium text-gray-900">{r.customerName}</p>
+        <p className="mt-0.5 text-xs text-gray-500">{r.customerPhone ?? "No phone"}</p>
+        <p className="mt-0.5 text-xs text-gray-400">{r.customerEmail ?? "No email"}</p>
       </div>
     ),
   },
   {
-    header: "Reference",
+    header: "Seller",
     cell: (r) => (
-      <span className="font-mono text-xs text-gray-600">
-        {r.clientReference}
-      </span>
+      <div>
+        <p className="text-sm text-gray-700">{r.sellerName ?? "Unassigned"}</p>
+        <p className="mt-0.5 text-xs text-gray-400">{r.sellerEmail ?? "No seller email"}</p>
+      </div>
     ),
   },
   {
     header: "Product",
     cell: (r) => (
-      <span className="text-sm font-medium text-gray-900">
-        {r.productName}
-      </span>
+      <div>
+        <p className="text-sm font-medium text-gray-900">{r.productName}</p>
+        <p className="mt-0.5 text-xs text-gray-400">{r.priceSummary}</p>
+      </div>
     ),
   },
   {
@@ -68,18 +69,19 @@ const COLUMNS: DataTableColumn<DashboardVerificationRow>[] = [
     cell: (r) => <StatusBadge status={r.saleStatus} />,
   },
   {
+    header: "Reference",
+    cell: (r) => (
+      <div>
+        <p className="font-mono text-xs text-gray-500">{r.clientReference}</p>
+        <p className="font-mono text-xs text-gray-400 mt-0.5">{r.id}</p>
+      </div>
+    ),
+  },
+  {
     header: "Created",
     cell: (r) => (
       <span className="text-xs text-gray-500 whitespace-nowrap">
         {formatDateTime(r.createdAt)}
-      </span>
-    ),
-  },
-  {
-    header: "Expires",
-    cell: (r) => (
-      <span className="text-xs text-gray-500 whitespace-nowrap">
-        {formatDateTime(r.expiresAt)}
       </span>
     ),
   },
@@ -92,26 +94,30 @@ const COLUMNS: DataTableColumn<DashboardVerificationRow>[] = [
     ),
   },
   {
-    header: "Certificate",
-    cell: (r) =>
-      r.certificateId ? (
-        <span className="font-mono text-xs text-gray-500">
-          {r.certificateId}
-        </span>
-      ) : (
-        <span className="text-xs text-gray-400">None</span>
-      ),
-  },
-  {
-    header: "Action",
-    cell: () => (
-      <button
-        disabled
-        className="text-xs text-blue-400 cursor-not-allowed"
-        title="Verification detail view is not available yet"
-      >
-        View details
-      </button>
+    header: "Links",
+    cell: (r) => (
+      <div className="flex flex-col gap-1">
+        <Link
+          className="text-xs font-semibold text-blue-600"
+          href={`/dashboard/verifications/${encodeURIComponent(r.id)}`}
+        >
+          View verification
+        </Link>
+        <Link
+          className="text-xs font-semibold text-gray-600"
+          href={`/dashboard/sales/${encodeURIComponent(r.saleId)}`}
+        >
+          View sale
+        </Link>
+        {r.certificateId && (
+          <Link
+            className="text-xs font-semibold text-green-700"
+            href={`/dashboard/certificates/${encodeURIComponent(r.certificateId)}`}
+          >
+            View certificate
+          </Link>
+        )}
+      </div>
     ),
   },
 ];
@@ -162,10 +168,10 @@ function LiveDataIndicator() {
         />
       </svg>
       <p className="text-sm text-green-800">
-        <span className="font-semibold">Live tenant-scoped data.</span>{" "}
+        <span className="font-semibold">Secure company data.</span>{" "}
         Verification sessions are loaded server-side for your organization
-        only. Raw tokens, verification URLs, hashes, contact details, and
-        payment details are not shown.
+        only. Secure link internals, verification URLs, and payment details
+        are not shown.
       </p>
     </div>
   );
@@ -175,12 +181,17 @@ function EmptyState() {
   return (
     <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 text-center">
       <h3 className="text-sm font-semibold text-gray-700">
-        No verification sessions found
+        No verifications yet
       </h3>
       <p className="text-xs text-gray-400 mt-1">
-        Sessions will appear after this organization creates sales and issues
-        verification links. Filters may also be hiding existing rows.
+        Create a new verification to send a secure customer confirmation link.
       </p>
+      <Link
+        href="/dashboard/sales/new"
+        className="mt-4 inline-flex rounded-lg bg-blue-600 px-4 py-2 text-xs font-semibold text-white"
+      >
+        Create a new verification
+      </Link>
     </div>
   );
 }
@@ -236,7 +247,7 @@ function PaginationControls({ data }: { data: DashboardVerificationsData }) {
   return (
     <div className="mt-4 flex items-center justify-between gap-4 text-xs text-gray-500">
       <span>
-        Page {data.pagination.page} of {data.pagination.totalPages} ·{" "}
+        Page {data.pagination.page} of {data.pagination.totalPages} Â·{" "}
         {data.pagination.totalRows} sessions
       </span>
       <div className="flex items-center gap-2">
@@ -311,7 +322,7 @@ async function VerificationsContent({
 
       <DashboardHeader
         title="Verifications"
-        subtitle="Live verification sessions for this organization."
+        subtitle="Customer verification status, outcomes, and certificate links."
       />
 
       {!data ? (
@@ -324,7 +335,7 @@ async function VerificationsContent({
               <DataTable
                 columns={COLUMNS}
                 rows={data.rows}
-                footer="Showing safe tenant-scoped verification fields only. Search is limited to sale ID and client reference."
+                footer="Showing safe verification fields only. Search is limited to sale ID and client reference."
               />
               <PaginationControls data={data} />
             </>

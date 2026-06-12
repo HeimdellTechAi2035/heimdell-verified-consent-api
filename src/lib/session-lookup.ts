@@ -4,6 +4,7 @@
 
 import { db } from "@/lib/db";
 import { hashToken } from "@/lib/crypto";
+import { resolveSalePolicySnapshot } from "@/lib/client-policy";
 import type {
   SessionLookupData,
   SessionLookupResult,
@@ -112,6 +113,12 @@ export async function lookupVerificationSession(
           account_holder_name: dd.accountHolderName,
         }
       : null,
+    policy_snapshot: resolveSalePolicySnapshot({
+      policySnapshot: sale.policySnapshot,
+      productTerms: sale.productTerms,
+      productPolicies: sale.productPolicies,
+      coolingOffDays: sale.coolingOffDays,
+    }),
     ai_marketing_opt_in: sale.aiMarketingOptIn ?? null,
     cooling_off_days: sale.coolingOffDays ?? null,
   };
