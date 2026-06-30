@@ -196,7 +196,7 @@ export function DashboardSidebar({ role }: { role?: Role }) {
   })).filter((section) => section.items.length > 0);
 
   return (
-    <aside className="w-60 shrink-0 bg-gray-900 flex flex-col">
+    <aside className="hidden w-60 shrink-0 bg-gray-900 lg:flex lg:flex-col">
       {/* Brand */}
       <div className="px-5 py-6 border-b border-gray-800">
         <p className="text-xs font-bold tracking-widest text-blue-400 uppercase mb-0.5">
@@ -255,5 +255,45 @@ export function DashboardSidebar({ role }: { role?: Role }) {
         <p className="text-xs text-gray-700 mt-0.5">Role-gated tenant access</p>
       </div>
     </aside>
+  );
+}
+
+export function DashboardTabletNav({ role }: { role?: Role }) {
+  const pathname = usePathname();
+  const visibleItems = NAV_SECTIONS.flatMap((section) => section.items).filter(
+    (item) => (role ? roleCanAccessDashboardSection(role, item.section) : false)
+  );
+
+  if (visibleItems.length === 0) {
+    return null;
+  }
+
+  return (
+    <nav className="border-b border-gray-200 bg-white lg:hidden">
+      <div className="flex gap-2 overflow-x-auto px-4 py-3">
+        {visibleItems.map((item) => {
+          const isActive =
+            pathname === item.href || pathname.startsWith(`${item.href}/`);
+
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              prefetch={false}
+              className={`flex min-w-fit items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold ${
+                isActive
+                  ? "border-blue-200 bg-blue-50 text-blue-700"
+                  : "border-gray-200 bg-white text-gray-600"
+              }`}
+            >
+              <span className={isActive ? "text-blue-500" : "text-gray-400"}>
+                {item.icon}
+              </span>
+              {item.label}
+            </Link>
+          );
+        })}
+      </div>
+    </nav>
   );
 }

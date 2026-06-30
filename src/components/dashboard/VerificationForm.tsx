@@ -45,7 +45,7 @@ function FormSection({
   return (
     <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
       <h2 className="text-sm font-semibold text-gray-900">{title}</h2>
-      <div className="mt-4 grid gap-4 md:grid-cols-2">{children}</div>
+      <div className="mt-4 grid gap-4 lg:grid-cols-2">{children}</div>
     </section>
   );
 }
@@ -101,7 +101,7 @@ function TextArea({
   placeholder?: string;
 }) {
   return (
-    <label className="block md:col-span-2">
+    <label className="block lg:col-span-2">
       <span className="text-sm font-medium text-gray-700">
         {label}
         {required && <span className="text-red-500"> *</span>}
