@@ -4,6 +4,8 @@
 import { type ReactNode } from "react";
 import { LegalFooter } from "@/components/LegalFooter";
 import type { OrganizationContext } from "@/lib/dashboard-auth";
+import { InstallPrompt } from "@/components/pwa/InstallPrompt";
+import { getPwaAppKeyForRole } from "@/lib/pwa-identity";
 import { DashboardSidebar, DashboardTabletNav } from "./DashboardSidebar";
 
 export function DashboardShell({
@@ -47,6 +49,8 @@ export function DashboardShell({
         </header>
 
         <DashboardTabletNav role={context?.membership.role} />
+
+        {context && <InstallPrompt appKey={getPwaAppKeyForRole(context.membership.role)} />}
 
         <main className="flex-1 overflow-auto px-4 py-5 sm:px-6 lg:px-8 lg:py-6">
           {children}
