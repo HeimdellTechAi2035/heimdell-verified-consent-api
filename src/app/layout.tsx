@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import Script from "next/script";
 import "./globals.css";
 import { ServiceWorkerRegister } from "@/components/pwa/ServiceWorkerRegister";
 
@@ -49,6 +50,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="antialiased">
+        <Script src="/pwa-capture.js" strategy="beforeInteractive" />
         {children}
         <ServiceWorkerRegister />
       </body>

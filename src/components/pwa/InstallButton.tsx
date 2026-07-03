@@ -1,44 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-
-type BeforeInstallPromptEvent = Event & {
-  prompt: () => Promise<void>;
-  userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
-};
-
-function isIos(): boolean {
-  if (typeof navigator === "undefined") {
-    return false;
-  }
-  return /iphone|ipad|ipod/i.test(navigator.userAgent);
-}
+import { isIos, useCapturedInstallPrompt } from "@/lib/pwa-install-capture";
 
 export function InstallButton({ label }: { label: string }) {
-  const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
-  const [installed, setInstalled] = useState(false);
+  const { deferredPrompt, installed, clear } = useCapturedInstallPrompt();
   const [ios, setIos] = useState(false);
 
   useEffect(() => {
     setIos(isIos());
-
-    const onBeforeInstallPrompt = (event: Event) => {
-      event.preventDefault();
-      setDeferredPrompt(event as BeforeInstallPromptEvent);
-    };
-
-    const onInstalled = () => {
-      setDeferredPrompt(null);
-      setInstalled(true);
-    };
-
-    window.addEventListener("beforeinstallprompt", onBeforeInstallPrompt);
-    window.addEventListener("appinstalled", onInstalled);
-
-    return () => {
-      window.removeEventListener("beforeinstallprompt", onBeforeInstallPrompt);
-      window.removeEventListener("appinstalled", onInstalled);
-    };
   }, []);
 
   if (installed) {
@@ -52,7 +22,7 @@ export function InstallButton({ label }: { label: string }) {
         onClick={async () => {
           await deferredPrompt.prompt();
           await deferredPrompt.userChoice;
-          setDeferredPrompt(null);
+          clear();
         }}
         className="inline-flex items-center justify-center rounded-lg bg-gray-900 px-5 py-3 text-sm font-medium text-white hover:bg-gray-800"
       >

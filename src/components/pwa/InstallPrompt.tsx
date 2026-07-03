@@ -3,11 +3,7 @@
 import Image from "next/image";
 import { useEffect, useState } from "react";
 import { PWA_APP_IDENTITIES, type PwaAppKey } from "@/lib/pwa-identity";
-
-type BeforeInstallPromptEvent = Event & {
-  prompt: () => Promise<void>;
-  userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
-};
+import { isIos, useCapturedInstallPrompt } from "@/lib/pwa-install-capture";
 
 function isStandalone(): boolean {
   if (typeof window === "undefined") {
@@ -17,52 +13,32 @@ function isStandalone(): boolean {
   return window.matchMedia("(display-mode: standalone)").matches || nav.standalone === true;
 }
 
-function isIos(): boolean {
-  if (typeof navigator === "undefined") {
-    return false;
-  }
-  return /iphone|ipad|ipod/i.test(navigator.userAgent);
-}
-
 function installedStorageKey(appKey: PwaAppKey): string {
   return `heimdell-pwa-installed:${appKey}`;
 }
 
 export function InstallPrompt({ appKey }: { appKey: PwaAppKey }) {
   const identity = PWA_APP_IDENTITIES[appKey];
-  const [visible, setVisible] = useState(false);
+  const { deferredPrompt, installed, clear } = useCapturedInstallPrompt();
+  const [eligible, setEligible] = useState(false);
   const [dismissed, setDismissed] = useState(false);
-  const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [ios, setIos] = useState(false);
 
   useEffect(() => {
     if (isStandalone() || window.localStorage.getItem(installedStorageKey(appKey)) === "true") {
       return;
     }
-
     setIos(isIos());
-    setVisible(true);
-
-    const onBeforeInstallPrompt = (event: Event) => {
-      event.preventDefault();
-      setDeferredPrompt(event as BeforeInstallPromptEvent);
-    };
-
-    const onInstalled = () => {
-      window.localStorage.setItem(installedStorageKey(appKey), "true");
-      setVisible(false);
-    };
-
-    window.addEventListener("beforeinstallprompt", onBeforeInstallPrompt);
-    window.addEventListener("appinstalled", onInstalled);
-
-    return () => {
-      window.removeEventListener("beforeinstallprompt", onBeforeInstallPrompt);
-      window.removeEventListener("appinstalled", onInstalled);
-    };
+    setEligible(true);
   }, [appKey]);
 
-  if (!visible || dismissed) {
+  useEffect(() => {
+    if (installed) {
+      window.localStorage.setItem(installedStorageKey(appKey), "true");
+    }
+  }, [installed, appKey]);
+
+  if (!eligible || installed || dismissed) {
     return null;
   }
 
@@ -90,7 +66,7 @@ export function InstallPrompt({ appKey }: { appKey: PwaAppKey }) {
           onClick={async () => {
             await deferredPrompt.prompt();
             await deferredPrompt.userChoice;
-            setDeferredPrompt(null);
+            clear();
           }}
           className="shrink-0 rounded-md px-3 py-1.5 text-xs font-semibold text-white"
           style={{ backgroundColor: identity.themeColor }}
