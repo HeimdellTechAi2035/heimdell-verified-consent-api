@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="Heimdell Company icon">
+  <rect width="512" height="512" rx="84" fill="#0f172a"/>
+  <path d="M256 78 388 130v104c0 86-52 148-132 192-80-44-132-106-132-192V130l132-52Z" fill="#f59e0b"/>
+  <path d="M202 256l45 45 90-112" fill="none" stroke="#ffffff" stroke-width="38" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M256 116 352 154v80c0 64-36 113-96 151-60-38-96-87-96-151v-80l96-38Z" fill="none" stroke="#fde68a" stroke-width="16"/>
+</svg>

@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="180" height="180" viewBox="0 0 180 180" role="img" aria-label="Heimdell Seller icon">
+  <rect width="180" height="180" rx="30" fill="#0f172a"/>
+  <path d="M90 28 137 46v37c0 31-19 53-47 69-28-16-47-38-47-69V46l47-18Z" fill="#16a34a"/>
+  <path d="M71 90l16 16 32-40" fill="none" stroke="#ffffff" stroke-width="13" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M90 41 124 54v29c0 23-13 40-34 53-21-13-34-30-34-53V54l34-13Z" fill="none" stroke="#bbf7d0" stroke-width="6"/>
+</svg>

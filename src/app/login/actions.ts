@@ -6,17 +6,24 @@ import {
   getPostLoginDashboardDestination,
   revalidateDashboardAuthPaths,
 } from "@/lib/dashboard-redirects";
+import { isPwaAppKey } from "@/lib/pwa-identity";
+
+function loginPathFor(formData: FormData): string {
+  const app = String(formData.get("app") ?? "");
+  return isPwaAppKey(app) ? `/login/${app}` : "/login";
+}
 
 export async function signInWithPassword(formData: FormData) {
+  const loginPath = loginPathFor(formData);
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
   const password = String(formData.get("password") ?? "");
 
   if (!email) {
-    redirect("/login?error=missing-email");
+    redirect(`${loginPath}?error=missing-email`);
   }
 
   if (!password) {
-    redirect("/login?error=missing-password");
+    redirect(`${loginPath}?error=missing-password`);
   }
 
   const supabase = await createSupabaseServerClient();
@@ -26,11 +33,11 @@ export async function signInWithPassword(formData: FormData) {
   });
 
   if (error) {
-    redirect("/login?error=signin-failed");
+    redirect(`${loginPath}?error=signin-failed`);
   }
 
   if (!data.user) {
-    redirect("/login?error=session-expired");
+    redirect(`${loginPath}?error=session-expired`);
   }
 
   revalidateDashboardAuthPaths();

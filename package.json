@@ -49,6 +49,7 @@
     "test:embed-token": "node scripts/verify-embed-token.mjs",
     "test:crm-widget": "node scripts/verify-crm-widget.mjs",
     "test:security-headers": "node scripts/verify-security-headers.mjs",
+    "test:pwa": "node scripts/verify-pwa-identity.mjs",
     "test:webhook-delivery": "node scripts/verify-webhook-delivery.mjs",
     "test:webhook-live-proof": "node scripts/verify-webhook-live-proof.mjs",
     "test:rate-limit": "node scripts/verify-rate-limit.mjs",
