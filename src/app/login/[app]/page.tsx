@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import { notFound, redirect } from "next/navigation";
 import { LegalFooter } from "@/components/LegalFooter";
 import { getCurrentDashboardUser } from "@/lib/dashboard-auth";
@@ -52,7 +53,15 @@ export default async function BrandedLoginPage({ params, searchParams }: Props) 
       <main className="flex flex-1 items-center justify-center px-4 py-8">
         <div className="w-full max-w-sm bg-white border border-gray-200 rounded-xl shadow-sm p-8">
           <div className="mb-6 flex items-center gap-3">
-            <img src={identity.icons[0].src} alt="" aria-hidden="true" className="h-10 w-10 rounded-lg" />
+            <Image
+              src={identity.icons[0].src}
+              alt=""
+              aria-hidden="true"
+              width={40}
+              height={40}
+              className="h-10 w-10 rounded-lg"
+              unoptimized
+            />
             <div>
               <h1 className="text-xl font-semibold text-gray-900">{identity.name}</h1>
               <p className="mt-0.5 text-sm text-gray-500">Sign in with an invited dashboard account.</p>

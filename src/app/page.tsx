@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { LegalFooter } from "@/components/LegalFooter";
 
 export default function Home() {
@@ -17,12 +18,12 @@ export default function Home() {
             dashboard access.
           </p>
           <div className="mt-7 flex flex-col items-center justify-center gap-3 sm:flex-row">
-            <a
+            <Link
               href="/login"
               className="rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-700"
             >
               Dashboard login
-            </a>
+            </Link>
           </div>
         </div>
       </main>
