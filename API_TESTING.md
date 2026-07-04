@@ -524,4 +524,4 @@ The browser widget can also be configured with `data-mode`, `data-target-id`, an
 
 The dashboard shell is available at `http://localhost:3000/dashboard` after Supabase Auth, internal user mapping, and organization membership are configured.
 
-Live tenant-scoped dashboard pages are available for overview, my-sales, sales, verifications, certificates, certificate detail/PDF, API keys, staff, integrations/webhook settings, and webhooks where the signed-in role is allowed. Notifications, client settings, billing, public signup, SMS/email delivery, MCP, and verification detail pages remain incomplete or intentionally disabled.
+Live tenant-scoped dashboard pages are available for overview, my-sales, sales, verifications, certificates, certificate detail/PDF, API keys, staff, integrations/webhook settings, webhooks, credits, and signups where the signed-in role is allowed. Notifications, client settings, SMS/email delivery, MCP, and verification detail pages remain incomplete or intentionally disabled.

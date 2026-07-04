@@ -14,6 +14,7 @@ export const DASHBOARD_SECTIONS = [
   "integrations",
   "notifications",
   "credits",
+  "signups",
 ] as const;
 
 export type DashboardSection = (typeof DASHBOARD_SECTIONS)[number];
@@ -91,6 +92,7 @@ export const DASHBOARD_SECTION_ROLES = {
   integrations: PLATFORM_ADMIN_ROLES,
   notifications: CLIENT_OWNER_AND_PLATFORM_ROLES,
   credits: CLIENT_OWNER_AND_PLATFORM_ROLES,
+  signups: PLATFORM_ADMIN_ROLES,
 } as const satisfies Record<DashboardSection, readonly Role[]>;
 
 export function isPlatformDashboardRole(role: Role): boolean {

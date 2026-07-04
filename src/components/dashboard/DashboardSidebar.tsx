@@ -40,6 +40,17 @@ const NAV_SECTIONS: NavSection[] = [
     heading: "Records",
     items: [
       {
+        href: "/dashboard/signups",
+        label: "Signups",
+        section: "signups",
+        icon: (
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+              d="M12 4v16m-8-8h16" />
+          </svg>
+        ),
+      },
+      {
         href: "/dashboard/clients",
         label: "Clients",
         section: "clients",

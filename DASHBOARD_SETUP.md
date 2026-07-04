@@ -2,7 +2,7 @@
 
 This guide explains Heimdell dashboard access, platform-admin client provisioning, and the older local setup fallback.
 
-The dashboard overview, my-sales, sales, verifications, certificates list/detail/PDF, API keys, staff, integrations/webhook settings, and webhooks pages now use protected tenant-scoped flows where implemented. Notifications, client settings, billing, public signup, SMS/email delivery, MCP, and verification detail pages remain unfinished or intentionally disabled.
+The dashboard overview, my-sales, sales, verifications, certificates list/detail/PDF, API keys, staff, integrations/webhook settings, webhooks, credits, and signups pages now use protected tenant-scoped flows where implemented. Notifications, client settings, SMS/email delivery, MCP, and verification detail pages remain unfinished or intentionally disabled.
 
 For a full local demo sequence, use `DEMO_RUNBOOK.md`.
 

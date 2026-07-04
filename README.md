@@ -179,7 +179,7 @@ scripts/             — Seed and key generation scripts
 - `/dashboard/integrations` includes tenant-scoped webhook endpoint management using existing `Client.webhookUrl` and encrypted `Client.webhookSecret`; secrets are generated server-side and shown once only, while the dashboard displays only configured status and a short fingerprint
 - Certificate detail is a protected evidence summary only; PDF download is protected, while email/share/export-all actions remain intentionally disabled
 - Protected certificate PDF export is available at `/dashboard/certificates/[id]/pdf` for certificate-authorized dashboard roles only; it is a masked evidence summary, not a public link
-- Notifications, client settings, billing, public signup, SMS/email delivery, MCP, and verification detail pages remain incomplete or intentionally disabled
+- Notifications, client settings, SMS/email delivery, MCP, and verification detail pages remain incomplete or intentionally disabled. Credit-based billing and public organization signup are now implemented (see below).
 - v1 server-to-server `x-api-key` authentication supports dashboard-managed `ApiKey` rows first, with legacy `Client.apiKeyHash` fallback preserved
 - CRM embed status APIs require short-lived signed embed tokens issued by a trusted backend through `POST /api/v1/embed-tokens`
 - `public/widget.js` renders safe CRM status using injected `embedToken`; it never uses server API keys in browser code
@@ -189,7 +189,7 @@ scripts/             — Seed and key generation scripts
 - Public verification endpoints and API-key endpoints have in-memory rate limiting with safe 429 responses
 - In-memory rate limiting is development-safe only; use Redis/Upstash or another shared store for multi-instance production
 - Dashboard authentication uses Supabase Auth server-side sessions, mapped to internal `User.externalAuthId`
-- Public self-serve dashboard signup is disabled; invite users in Supabase Auth and create matching internal `User` plus `OrganizationMembership` rows
+- Public self-serve organization signup is available at `/signup` — submissions (including Companies House number, ICO registration number, and business address for manual legitimacy review) land as `PENDING_APPROVAL` organizations, invisible on `/dashboard/clients` until a Platform Admin approves them from `/dashboard/signups`. Approval automatically creates the Supabase Auth user, `Client`, `User`, and `CLIENT_OWNER` `OrganizationMembership`, and emails the applicant their login. Staff can still provision manually via `/dashboard/clients/new` for cases needing direct invitation instead.
 - Use `npm run setup:dashboard-user` to create or update the internal dashboard user, organization membership, role, and optional development client link
 
 ## Deployment Domain, PWA, and Legal Footer

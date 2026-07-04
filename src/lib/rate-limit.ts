@@ -62,6 +62,11 @@ export const RATE_LIMIT_POLICIES = {
     limit: 120,
     windowMs: 60_000,
   },
+  publicSignupSubmit: {
+    name: "public_signup_submit",
+    limit: 5,
+    windowMs: 60_000,
+  },
 } as const satisfies Record<string, RateLimitPolicy>;
 
 export function safeFingerprint(value: string, length = 16): string {

@@ -133,8 +133,8 @@ export async function getPlatformClientSetupList(
 
   const organizations = await db.organization.findMany({
     where: filters.archived
-      ? { archivedAt: { not: null } }
-      : { archivedAt: null },
+      ? { archivedAt: { not: null }, onboardingStatus: "APPROVED" }
+      : { archivedAt: null, onboardingStatus: "APPROVED" },
     orderBy: { createdAt: "desc" },
     select: {
       id: true,

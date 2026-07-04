@@ -1,6 +1,6 @@
 # Client Onboarding Flow
 
-This document describes the Phase 2 platform-admin client/company provisioning flow.
+This document describes the Phase 2 platform-admin client/company provisioning flow, plus the public self-serve signup path added later that reuses the same underlying provisioning logic (see "Public self-serve signup" below).
 
 ## Purpose
 
@@ -14,7 +14,13 @@ This flow creates:
 - an `OrganizationMembership`
 - a first-login password-change requirement
 
-It does not create public signup, billing, SMS/email delivery, MCP, or client-visible API key/webhook/integration management.
+It does not create SMS/email delivery, MCP, or client-visible API key/webhook/integration management. Billing (credit-based, Stripe Checkout) and public signup are both implemented — see "Public self-serve signup" below.
+
+## Public self-serve signup
+
+A prospective client can apply directly at `/signup` without any Heimdell staff involvement, submitting company name, Companies House number, ICO registration number, business address, and a contact name/email/phone. This does **not** verify those numbers against the real Companies House/ICO registers (no API integration) — it only collects them for a Platform Admin to manually sanity-check on the `/dashboard/signups` review page before approving.
+
+The submission creates an `Organization` row with `onboardingStatus: PENDING_APPROVAL` immediately — no `Client`, `User`, or `OrganizationMembership` row exists yet, and the organization is invisible on `/dashboard/clients` until approved. Clicking **Approve** on `/dashboard/signups` runs the exact same underlying provisioning logic as the manual flow above (Supabase Auth user creation, `Client` record, `User` + `CLIENT_OWNER` `OrganizationMembership`, forced password change on first login), then emails the applicant their login. Unlike the manual flow — where a staff member always holds the temporary password until they relay it — the approval UI also displays the password on-screen as a fallback if the email fails to send, since there's no human in that loop to notice a lost password. Clicking **Reject** marks the application `REJECTED` with a reason and leaves it off the clients list permanently.
 
 ## Required Environment
 
@@ -178,9 +184,8 @@ Seller users still cannot access organization-wide sales, verifications, certifi
 
 - Platform admins can inspect client setup status from `/dashboard/clients/[organizationId]`.
 - API key, webhook, and integration settings remain platform-admin-only.
-- There is no public signup.
-- There is no automated email invitation delivery in this phase.
-- Platform admins must communicate temporary credentials out of band using an approved secure process.
+- Public signup exists at `/signup`, gated behind Platform Admin approval at `/dashboard/signups` (see above) — it is not fully unattended onboarding.
+- The approval flow does send an automated login email; the fully-manual `/dashboard/clients/new` flow still requires platform admins to communicate temporary credentials out of band using an approved secure process.
 - Sale ownership tracking now uses nullable `Sale.submittedByUserId`.
 - Sale intake can attach ownership with optional `seller_email` when the email belongs to a permitted user in the same organization as the authenticated API client/key.
 - Payloads without `seller_email` continue to work and create sales without seller dashboard ownership.

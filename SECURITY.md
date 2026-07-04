@@ -108,7 +108,7 @@ Do not wire new dashboard live data until:
 - every live dashboard query includes an organization boundary
 - audit logging is added around admin actions
 
-Overview, my-sales, sales, verifications, certificate list/detail/PDF, API keys, staff, integrations/webhook settings, and webhooks already have protected flows. Notifications, client settings, billing, public signup, SMS/email delivery, MCP, and verification detail pages remain incomplete or intentionally disabled.
+Overview, my-sales, sales, verifications, certificate list/detail/PDF, API keys, staff, integrations/webhook settings, webhooks, credits, and signups already have protected flows. Notifications, client settings, SMS/email delivery, MCP, and verification detail pages remain incomplete or intentionally disabled.
 
 ## API keys
 
@@ -140,8 +140,8 @@ Never expose the Supabase service-role key in browser code. This app does not ne
 Recommended setup:
 
 1. Configure Supabase Auth email login or magic links.
-2. Disable public self-serve dashboard signup unless explicitly approved.
-3. Invite or admin-create dashboard users in Supabase.
+2. Public self-serve organization signup is now approved and live at `/signup` (see `CLIENT_ONBOARDING_FLOW.md`) — every submission requires explicit Platform Admin approval at `/dashboard/signups` before any Supabase Auth user, `Client`, or `OrganizationMembership` is created, and no login is emailed until approval. Staff can still invite/admin-create users directly for cases that should bypass the public form.
+3. Invite or admin-create dashboard users in Supabase for the manual path.
 4. Apply the migration that adds `User.externalAuthId`.
 5. Create an internal `User` row where `externalAuthId` equals the Supabase auth user ID.
 6. Create at least one `OrganizationMembership` row for that internal user.

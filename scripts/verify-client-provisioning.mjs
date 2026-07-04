@@ -25,6 +25,20 @@ function loadTsModule(path, mocks = {}) {
   return module.exports;
 }
 
+const PROVISIONING_EXTRA_MOCKS = {
+  "@/lib/supabase-admin": {
+    createSupabaseAdminClient: () => {
+      throw new Error("Mock Supabase admin client should not be constructed in static verification.");
+    },
+  },
+  "@/lib/dashboard-staff": {
+    generateTemporaryStaffPassword: () => "mock-temp-password",
+  },
+  "@/lib/notification-providers": {
+    sendEmailNotification: async () => ({ status: "skipped", reason: "mocked in static verification" }),
+  },
+};
+
 const policy = loadTsModule("src/lib/dashboard-role-policy.ts");
 const provisioning = loadTsModule("src/lib/dashboard-client-provisioning.ts", {
   "@/lib/db": {
@@ -40,6 +54,7 @@ const provisioning = loadTsModule("src/lib/dashboard-client-provisioning.ts", {
   "@/lib/crypto": {
     hashValue: async (value) => `hash:${value}`,
   },
+  ...PROVISIONING_EXTRA_MOCKS,
 });
 
 function loadProvisioningWithDb(db) {
@@ -48,6 +63,7 @@ function loadProvisioningWithDb(db) {
     "@/lib/crypto": {
       hashValue: async (value) => `hash:${value}`,
     },
+    ...PROVISIONING_EXTRA_MOCKS,
   });
 }
 

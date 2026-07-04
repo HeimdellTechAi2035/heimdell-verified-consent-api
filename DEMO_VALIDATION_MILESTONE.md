@@ -113,7 +113,7 @@ This milestone records the current locally validated demo state for the Heimdell
 - CRM embedded widget/writeback workflow still needs final production wiring.
 - API keys/webhook management remains Heimdell platform-admin only.
 - SMS/email customer delivery is not built yet.
-- Public signup, billing, and MCP/ChatGPT App are not built yet.
+- MCP/ChatGPT App is not built yet. Public signup (`/signup`, approval-gated at `/dashboard/signups`) and credit-based billing (Stripe Checkout) were added after this milestone.
 
 ## Next Recommended Steps
 

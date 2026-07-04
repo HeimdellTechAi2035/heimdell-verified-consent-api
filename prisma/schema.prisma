@@ -119,6 +119,14 @@ enum PhoneCallStatus {
   CANCELED
 }
 
+/// Defaults to APPROVED so existing organizations are unaffected --
+/// only the public self-serve signup path explicitly sets PENDING_APPROVAL.
+enum OrganizationOnboardingStatus {
+  PENDING_APPROVAL
+  APPROVED
+  REJECTED
+}
+
 // ---------------------------------------------------------------------------
 // Models
 // ---------------------------------------------------------------------------
@@ -134,6 +142,20 @@ model Organization {
   notes               String?
   archivedAt          DateTime?
   archivedByUserId    String?
+
+  /// Self-serve signup review. Defaults to APPROVED (see enum doc) so this
+  /// column is safe to add without affecting any existing organization.
+  onboardingStatus      OrganizationOnboardingStatus @default(APPROVED)
+  /// Submitted at signup for manual legitimacy review -- NOT verified
+  /// against the real Companies House/ICO registers (no API integration).
+  companiesHouseNumber  String?
+  icoRegistrationNumber String?
+  businessAddress       String?
+  approvedAt            DateTime?
+  approvedByUserId      String?
+  rejectedAt            DateTime?
+  rejectionReason       String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

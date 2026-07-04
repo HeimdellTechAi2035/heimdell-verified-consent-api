@@ -54,6 +54,7 @@
     "test:certificate-evidence": "node scripts/verify-certificate-evidence.mjs",
     "test:twilio-signature": "node scripts/verify-twilio-signature.mjs",
     "test:voice-twiml": "node scripts/verify-voice-twiml.mjs",
+    "test:organization-signup": "node scripts/verify-organization-signup.mjs",
     "test:webhook-delivery": "node scripts/verify-webhook-delivery.mjs",
     "test:webhook-live-proof": "node scripts/verify-webhook-live-proof.mjs",
     "test:rate-limit": "node scripts/verify-rate-limit.mjs",
