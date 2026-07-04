@@ -16,7 +16,14 @@ async function CreditBalanceBadge({ context }: { context: OrganizationContext })
     return null;
   }
 
-  const balance = await getOrganizationCreditBalance(context.organization.id);
+  let balance: number;
+  try {
+    balance = await getOrganizationCreditBalance(context.organization.id);
+  } catch {
+    // A transient DB error here must not crash the entire dashboard shell --
+    // every /dashboard/* page renders through this component.
+    return null;
+  }
 
   return (
     <Link

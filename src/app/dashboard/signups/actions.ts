@@ -72,7 +72,11 @@ export async function approveSignupAction(
     metadata: { emailSent: result.emailSent },
   });
 
-  revalidatePath("/dashboard/signups");
+  // Deliberately NOT revalidating /dashboard/signups here -- doing so would
+  // immediately drop the just-approved row (it no longer matches
+  // PENDING_APPROVAL), unmounting this exact form before the admin ever
+  // sees the confirmation/password. It naturally disappears next time this
+  // page is loaded fresh, which is dynamically rendered on every request.
   revalidatePath("/dashboard/clients");
 
   return {
