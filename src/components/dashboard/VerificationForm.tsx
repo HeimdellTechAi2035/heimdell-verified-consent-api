@@ -59,6 +59,7 @@ function Field({
   defaultValue,
   inputMode,
   step,
+  onValueChange,
 }: {
   label: string;
   name: string;
@@ -68,6 +69,7 @@ function Field({
   defaultValue?: string;
   inputMode?: "decimal" | "numeric" | "tel";
   step?: string;
+  onValueChange?: (value: string) => void;
 }) {
   return (
     <label className="block">
@@ -80,6 +82,7 @@ function Field({
         defaultValue={defaultValue}
         inputMode={inputMode}
         name={name}
+        onChange={onValueChange ? (event) => onValueChange(event.target.value) : undefined}
         placeholder={placeholder}
         required={required}
         step={step}
@@ -162,6 +165,8 @@ function SuccessPanel({
     window.setTimeout(() => setCopied(false), 2000);
   }
 
+  const isPhoneCall = verification.verificationMethod === "phone_call";
+
   return (
     <div className="max-w-3xl rounded-xl border border-green-200 bg-white p-6 shadow-sm">
       <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-3">
@@ -169,10 +174,18 @@ function SuccessPanel({
           Verification created
         </p>
         <p className="mt-1 text-xs text-green-800">
-          Status Pending. Share the secure link with the customer now; the raw
-          secure link is only shown on this success screen.
+          {isPhoneCall
+            ? "Status Pending. We're calling the customer now — the link below stays active too, in case the call goes unanswered."
+            : "Status Pending. Share the secure link with the customer now; the raw secure link is only shown on this success screen."}
         </p>
       </div>
+
+      {isPhoneCall && (
+        <div className="mt-4 flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+          <span className="h-2 w-2 shrink-0 animate-pulse rounded-full bg-blue-500" />
+          Calling {verification.customerName} now to confirm agreement.
+        </div>
+      )}
 
       <dl className="mt-6 grid gap-4 md:grid-cols-2">
         <div>
@@ -260,6 +273,54 @@ function SuccessPanel({
   );
 }
 
+function VerificationMethodField({ phoneFilled }: { phoneFilled: boolean }) {
+  return (
+    <div className="lg:col-span-2">
+      <span className="text-sm font-medium text-gray-700">Verification method</span>
+      <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-gray-200 bg-white px-4 py-3 has-[:checked]:border-blue-400 has-[:checked]:bg-blue-50">
+          <input
+            className="mt-0.5 h-4 w-4 border-gray-300 text-blue-600 focus:ring-blue-500"
+            defaultChecked
+            name="verificationMethod"
+            type="radio"
+            value="link"
+          />
+          <span>
+            <span className="block text-sm font-medium text-gray-900">Web link</span>
+            <span className="mt-1 block text-xs leading-relaxed text-gray-500">
+              Send a secure link by SMS/email for the customer to review and confirm.
+            </span>
+          </span>
+        </label>
+        <label
+          className={`flex items-start gap-3 rounded-lg border px-4 py-3 ${
+            phoneFilled
+              ? "cursor-pointer border-gray-200 bg-white has-[:checked]:border-blue-400 has-[:checked]:bg-blue-50"
+              : "cursor-not-allowed border-gray-100 bg-gray-50 opacity-60"
+          }`}
+        >
+          <input
+            className="mt-0.5 h-4 w-4 border-gray-300 text-blue-600 focus:ring-blue-500"
+            disabled={!phoneFilled}
+            name="verificationMethod"
+            type="radio"
+            value="phone_call"
+          />
+          <span>
+            <span className="block text-sm font-medium text-gray-900">Phone call</span>
+            <span className="mt-1 block text-xs leading-relaxed text-gray-500">
+              {phoneFilled
+                ? "Call the customer immediately, read out the terms, and record their verbal agreement."
+                : "Enter a customer phone number above to enable phone-call verification."}
+            </span>
+          </span>
+        </label>
+      </div>
+    </div>
+  );
+}
+
 export function VerificationForm({
   action,
   mode,
@@ -268,6 +329,7 @@ export function VerificationForm({
   backLabel,
 }: VerificationFormProps) {
   const [state, formAction, pending] = useActionState(action, INITIAL_STATE);
+  const [customerPhone, setCustomerPhone] = useState("");
 
   if (state.status === "success") {
     return (
@@ -306,6 +368,7 @@ export function VerificationForm({
           inputMode="tel"
           label="Phone"
           name="customerPhone"
+          onValueChange={setCustomerPhone}
           required
         />
         <Field label="Email" name="customerEmail" type="email" />
@@ -395,6 +458,7 @@ export function VerificationForm({
             </span>
           </span>
         </label>
+        <VerificationMethodField phoneFilled={customerPhone.trim().length > 0} />
       </FormSection>
 
       <div className="flex flex-col-reverse gap-3 border-t border-gray-100 pt-5 sm:flex-row sm:justify-end">

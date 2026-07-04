@@ -11,6 +11,9 @@ import {
 } from "@/lib/crypto";
 import { sendVerificationLinkNotification } from "@/lib/notifications";
 import { buildPolicySnapshotForClient } from "@/lib/client-policy";
+import { chargeCreditsForVerification, InsufficientCreditsError } from "@/lib/credit-ledger";
+import { creditCostForMethod } from "@/lib/credit-pricing";
+import type { VerificationMethod } from "@prisma/client";
 
 const APP_URL = process.env.APP_URL ?? "http://localhost:3000";
 const VERIFICATION_EXPIRY_MINUTES = 30;
@@ -33,6 +36,9 @@ const optionalEmailSchema = z.preprocess(
 );
 
 const digitsOnly = (value: unknown) => String(value ?? "").replace(/[\s-]/g, "");
+
+/** Loose E.164-ish check — Twilio Voice needs a real dialable number. */
+const PHONE_CALL_CAPABLE_PATTERN = /^\+?[1-9]\d{7,14}$/;
 
 export const dashboardVerificationSchema = z.object({
   sellerUserId: z
@@ -97,6 +103,15 @@ export const dashboardVerificationSchema = z.object({
     .max(365, "Cooling-off days must be 365 or fewer.")
     .default(14),
   aiMarketingOptIn: z.preprocess((value) => value === "on", z.boolean()),
+  verificationMethod: z.enum(["link", "phone_call"]).default("link"),
+}).superRefine((data, ctx) => {
+  if (data.verificationMethod === "phone_call" && !PHONE_CALL_CAPABLE_PATTERN.test(data.customerPhone)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["customerPhone"],
+      message: "Enter a valid dialable phone number to use phone-call verification.",
+    });
+  }
 });
 
 export type DashboardVerificationInput = z.infer<
@@ -117,6 +132,7 @@ export type CreatedDashboardVerification = {
   verificationUrl: string;
   customerName: string;
   productName: string;
+  verificationMethod: "link" | "phone_call";
 };
 
 export type DashboardNewVerificationResult =
@@ -159,6 +175,7 @@ export function parseDashboardVerificationFormData(formData: FormData) {
     accountHolderName: formData.get("accountHolderName"),
     coolingOffDays: formData.get("coolingOffDays") || "14",
     aiMarketingOptIn: formData.get("aiMarketingOptIn"),
+    verificationMethod: formData.get("verificationMethod") || "link",
   });
 }
 
@@ -284,50 +301,70 @@ export async function createDashboardVerification(params: {
     coolingOffDays: input.coolingOffDays,
   });
 
-  const sale = await db.sale.create({
-    data: {
-      clientId: client.id,
-      submittedByUserId: params.submittedByUserId,
-      customerName: input.customerFullName,
-      customerEmail: input.customerEmail ?? null,
-      customerPhone: input.customerPhone,
-      customerAddress: input.customerAddress,
-      productName: input.productName,
-      productPrice: Number(input.subscriptionPrice),
-      productFrequency: input.subscriptionFrequency,
-      productTerms: buildTermsSummary(input),
-      productPolicies: input.policiesSummary,
-      salesChannel: input.salesChannel,
-      aiMarketingOptIn: input.aiMarketingOptIn,
-      coolingOffDays: input.coolingOffDays,
-      policySnapshot,
-      directDebitMandate: {
-        create: {
-          bankName: input.bankName,
-          sortCode: input.sortCode,
-          accountNumberLast4,
-          encryptedAccountNumber,
-          accountHolderName: input.accountHolderName,
+  const method: VerificationMethod =
+    input.verificationMethod === "phone_call" ? "PHONE_CALL" : "LINK";
+
+  const sale = await db.$transaction(async (tx) => {
+    const created = await tx.sale.create({
+      data: {
+        clientId: client.id,
+        submittedByUserId: params.submittedByUserId,
+        customerName: input.customerFullName,
+        customerEmail: input.customerEmail ?? null,
+        customerPhone: input.customerPhone,
+        customerAddress: input.customerAddress,
+        productName: input.productName,
+        productPrice: Number(input.subscriptionPrice),
+        productFrequency: input.subscriptionFrequency,
+        productTerms: buildTermsSummary(input),
+        productPolicies: input.policiesSummary,
+        salesChannel: input.salesChannel,
+        aiMarketingOptIn: input.aiMarketingOptIn,
+        coolingOffDays: input.coolingOffDays,
+        policySnapshot,
+        directDebitMandate: {
+          create: {
+            bankName: input.bankName,
+            sortCode: input.sortCode,
+            accountNumberLast4,
+            encryptedAccountNumber,
+            accountHolderName: input.accountHolderName,
+          },
+        },
+        verificationSessions: {
+          create: {
+            tokenHash,
+            expiresAt,
+            method,
+          },
         },
       },
-      verificationSessions: {
-        create: {
-          tokenHash,
-          expiresAt,
+      include: {
+        verificationSessions: {
+          orderBy: { createdAt: "desc" },
+          take: 1,
+          select: {
+            id: true,
+            status: true,
+            expiresAt: true,
+          },
         },
       },
-    },
-    include: {
-      verificationSessions: {
-        orderBy: { createdAt: "desc" },
-        take: 1,
-        select: {
-          id: true,
-          status: true,
-          expiresAt: true,
-        },
-      },
-    },
+    });
+
+    const createdSession = created.verificationSessions[0];
+    if (!createdSession) {
+      throw new Error("Verification session could not be created.");
+    }
+
+    await chargeCreditsForVerification(tx, {
+      organizationId: context.organization.id,
+      cost: creditCostForMethod(input.verificationMethod),
+      saleId: created.id,
+      verificationSessionId: createdSession.id,
+    });
+
+    return created;
   });
 
   const session = sale.verificationSessions[0];
@@ -339,6 +376,9 @@ export async function createDashboardVerification(params: {
 
   sendVerificationLinkNotification({
     saleId: sale.id,
+    verificationSessionId: session.id,
+    token,
+    method,
     customerPhone: sale.customerPhone ?? null,
     customerEmail: sale.customerEmail ?? null,
     verificationUrl,
@@ -359,6 +399,7 @@ export async function createDashboardVerification(params: {
     verificationUrl,
     customerName: sale.customerName,
     productName: sale.productName,
+    verificationMethod: input.verificationMethod,
   };
 }
 
@@ -398,6 +439,15 @@ export async function createDashboardVerificationFromForm(params: {
       userId: params.context.user.id,
       errorName: error instanceof Error ? error.name : "UnknownError",
     });
+
+    if (error instanceof InsufficientCreditsError) {
+      return {
+        status: "error",
+        message:
+          "Your organization doesn't have enough credits for a new verification. Buy more credits from the Credits page.",
+        createdVerification: null,
+      };
+    }
 
     return {
       status: "error",

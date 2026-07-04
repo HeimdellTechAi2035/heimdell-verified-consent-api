@@ -13,6 +13,7 @@ export const DASHBOARD_SECTIONS = [
   "settings",
   "integrations",
   "notifications",
+  "credits",
 ] as const;
 
 export type DashboardSection = (typeof DASHBOARD_SECTIONS)[number];
@@ -52,7 +53,7 @@ const PLATFORM_ADMIN_ROLES = [
   "OWNER",
 ] as const satisfies readonly Role[];
 
-const CLIENT_OWNER_AND_PLATFORM_ROLES = [
+export const CLIENT_OWNER_AND_PLATFORM_ROLES = [
   "PLATFORM_ADMIN",
   "CLIENT_OWNER",
   "CLIENT_MANAGER",
@@ -89,6 +90,7 @@ export const DASHBOARD_SECTION_ROLES = {
   settings: CLIENT_OWNER_AND_PLATFORM_ROLES,
   integrations: PLATFORM_ADMIN_ROLES,
   notifications: CLIENT_OWNER_AND_PLATFORM_ROLES,
+  credits: CLIENT_OWNER_AND_PLATFORM_ROLES,
 } as const satisfies Record<DashboardSection, readonly Role[]>;
 
 export function isPlatformDashboardRole(role: Role): boolean {

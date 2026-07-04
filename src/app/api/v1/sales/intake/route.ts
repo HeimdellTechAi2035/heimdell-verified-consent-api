@@ -27,7 +27,9 @@ import {
   RATE_LIMIT_POLICIES,
   safeFingerprint,
 } from "@/lib/rate-limit";
-import type { Role } from "@prisma/client";
+import { chargeCreditsForVerification, InsufficientCreditsError } from "@/lib/credit-ledger";
+import { creditCostForMethod } from "@/lib/credit-pricing";
+import type { Role, VerificationMethod } from "@prisma/client";
 
 const APP_URL = process.env.APP_URL ?? "http://localhost:3000";
 
@@ -154,57 +156,76 @@ export async function POST(req: NextRequest) {
       coolingOffDays: data.consent?.cooling_off_days ?? null,
     });
 
-    // Prisma nested create — Sale + DirectDebitMandate + VerificationSession
-    // are written in a single implicit database transaction.
-    const sale = await db.sale.create({
-      data: {
-        clientId: client.id,
-        clientReference: data.client_reference,
-        agentId: data.agent_id,
-        submittedByUserId,
+    const method: VerificationMethod =
+      data.verification_method === "phone_call" ? "PHONE_CALL" : "LINK";
 
-        // Customer
-        customerName: data.customer.full_name,
-        customerEmail: data.customer.email,
-        customerPhone: data.customer.phone,
-        customerAddress: data.customer.address,
+    // Sale + DirectDebitMandate + VerificationSession are created together
+    // with the credit charge in one explicit transaction, so a sale is never
+    // created without a matching charge, and a charge never happens without
+    // a sale (InsufficientCreditsError aborts the whole transaction).
+    const sale = await db.$transaction(async (tx) => {
+      const created = await tx.sale.create({
+        data: {
+          clientId: client.id,
+          clientReference: data.client_reference,
+          agentId: data.agent_id,
+          submittedByUserId,
 
-        // Product
-        productName: data.product.name,
-        productPrice: parseFloat(data.product.subscription_price),
-        productFrequency: data.product.subscription_frequency,
-        productTerms: data.product.subscription_terms_summary,
-        productPolicies: data.product.policies_summary,
-        salesChannel: data.sales_channel ?? null,
-        aiMarketingOptIn: data.consent?.ai_marketing_opt_in ?? null,
-        coolingOffDays: data.consent?.cooling_off_days ?? null,
-        policySnapshot,
+          // Customer
+          customerName: data.customer.full_name,
+          customerEmail: data.customer.email,
+          customerPhone: data.customer.phone,
+          customerAddress: data.customer.address,
 
-        // Status defaults to PENDING via schema
+          // Product
+          productName: data.product.name,
+          productPrice: parseFloat(data.product.subscription_price),
+          productFrequency: data.product.subscription_frequency,
+          productTerms: data.product.subscription_terms_summary,
+          productPolicies: data.product.policies_summary,
+          salesChannel: data.sales_channel ?? null,
+          aiMarketingOptIn: data.consent?.ai_marketing_opt_in ?? null,
+          coolingOffDays: data.consent?.cooling_off_days ?? null,
+          policySnapshot,
 
-        directDebitMandate: {
-          create: {
-            bankName: direct_debit.bank_name,
-            sortCode: direct_debit.sort_code,
-            accountNumberLast4,
-            encryptedAccountNumber,
-            accountHolderName: direct_debit.account_holder_name,
+          // Status defaults to PENDING via schema
+
+          directDebitMandate: {
+            create: {
+              bankName: direct_debit.bank_name,
+              sortCode: direct_debit.sort_code,
+              accountNumberLast4,
+              encryptedAccountNumber,
+              accountHolderName: direct_debit.account_holder_name,
+            },
+          },
+
+          verificationSessions: {
+            create: {
+              tokenHash,
+              expiresAt,
+              method,
+              // status defaults to PENDING via schema
+            },
           },
         },
-
-        verificationSessions: {
-          create: {
-            tokenHash,
-            expiresAt,
-            // status defaults to PENDING via schema
+        include: {
+          verificationSessions: {
+            select: { id: true, status: true, expiresAt: true },
           },
         },
-      },
-      include: {
-        verificationSessions: {
-          select: { id: true, status: true, expiresAt: true },
-        },
-      },
+      });
+
+      if (client.organizationId) {
+        await chargeCreditsForVerification(tx, {
+          organizationId: client.organizationId,
+          cost: creditCostForMethod(data.verification_method),
+          saleId: created.id,
+          verificationSessionId: created.verificationSessions[0].id,
+        });
+      }
+
+      return created;
     });
 
     const session = sale.verificationSessions[0];
@@ -213,6 +234,9 @@ export async function POST(req: NextRequest) {
     // Queue notification logging — fire-and-forget; must never break core flow.
     sendVerificationLinkNotification({
       saleId: sale.id,
+      verificationSessionId: session.id,
+      token,
+      method,
       customerPhone: sale.customerPhone ?? null,
       customerEmail: sale.customerEmail ?? null,
       verificationUrl,
@@ -235,6 +259,11 @@ export async function POST(req: NextRequest) {
       { status: 201 }
     );
   } catch (err) {
+    if (err instanceof InsufficientCreditsError) {
+      return errors.paymentRequired(
+        "This organization does not have enough credits for a new verification."
+      );
+    }
     // Log the error server-side only — never expose internal details.
     console.error("[sales/intake] database error:", err);
     return errors.internal();

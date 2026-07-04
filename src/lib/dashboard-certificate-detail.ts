@@ -49,8 +49,10 @@ export type DashboardCertificateDetail = {
     completedAt: string | null;
     declinedAt: string | null;
     expiresAt: string;
+    verificationMethod: string | null;
     customerIpAddress: string | null;
     customerUserAgent: string | null;
+    callSid: string | null;
   };
   policy: CompliancePolicySnapshot & {
     isLegacyFallback: boolean;
@@ -226,8 +228,10 @@ export function buildCertificateDetailViewModel(certificate: {
       declinedAt:
         certificate.verificationSession.declinedAt?.toISOString() ?? null,
       expiresAt: certificate.verificationSession.expiresAt.toISOString(),
+      verificationMethod: stringFromJson(certificateJson, "verification_method"),
       customerIpAddress: stringFromJson(certificateJson, "ip_address"),
       customerUserAgent: stringFromJson(certificateJson, "user_agent"),
+      callSid: stringFromJson(certificateJson, "call_sid"),
     },
     policy: {
       ...resolvedPolicy,
@@ -257,10 +261,17 @@ export function buildCertificateDetailViewModel(certificate: {
           "evidence_storage_acknowledged"
         ),
       },
-      {
-        label: "Typed name confirmation",
-        value: stringFromJson(certificateJson, "typed_name"),
-      },
+      stringFromJson(certificateJson, "verification_method") === "phone_call"
+        ? {
+            label: "Confirmed via phone call",
+            value: stringFromJson(certificateJson, "digits_pressed") === "1"
+              ? `Pressed 1 to agree (call ${stringFromJson(certificateJson, "call_sid") ?? "unknown"})`
+              : stringFromJson(certificateJson, "digits_pressed"),
+          }
+        : {
+            label: "Typed name confirmation",
+            value: stringFromJson(certificateJson, "typed_name"),
+          },
     ],
     paymentSummary: {
       bankName: stringFromJson(certificateJson, "direct_debit_bank_name"),

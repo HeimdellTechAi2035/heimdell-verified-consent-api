@@ -8,6 +8,7 @@ export type ApiErrorCode =
   | "FORBIDDEN"
   | "NOT_FOUND"
   | "CONFLICT"
+  | "PAYMENT_REQUIRED"
   | "TOO_MANY_REQUESTS"
   | "UNPROCESSABLE_ENTITY"
   | "INTERNAL_SERVER_ERROR";
@@ -46,6 +47,9 @@ export const errors = {
 
   conflict: (message: string) =>
     apiError("CONFLICT", message, 409),
+
+  paymentRequired: (message = "Insufficient credits") =>
+    apiError("PAYMENT_REQUIRED", message, 402),
 
   tooManyRequests: (message = "Too many requests") =>
     apiError("TOO_MANY_REQUESTS", message, 429),

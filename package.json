@@ -50,6 +50,10 @@
     "test:crm-widget": "node scripts/verify-crm-widget.mjs",
     "test:security-headers": "node scripts/verify-security-headers.mjs",
     "test:pwa": "node scripts/verify-pwa-identity.mjs",
+    "test:credits": "node scripts/verify-credit-ledger.mjs",
+    "test:certificate-evidence": "node scripts/verify-certificate-evidence.mjs",
+    "test:twilio-signature": "node scripts/verify-twilio-signature.mjs",
+    "test:voice-twiml": "node scripts/verify-voice-twiml.mjs",
     "test:webhook-delivery": "node scripts/verify-webhook-delivery.mjs",
     "test:webhook-live-proof": "node scripts/verify-webhook-live-proof.mjs",
     "test:rate-limit": "node scripts/verify-rate-limit.mjs",
@@ -65,6 +69,7 @@
     "next": "^15.3.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "stripe": "^22.3.0",
     "zod": "^3.23.8"
   },
   "devDependencies": {

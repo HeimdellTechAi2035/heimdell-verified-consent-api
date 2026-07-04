@@ -7,12 +7,7 @@ import type { Client, DirectDebitMandate, Sale, VerificationSession } from "@pri
 // Input types
 // ---------------------------------------------------------------------------
 
-/** Evidence collected from the customer at the point of completion. */
-export type CertificateEvidence = {
-  typed_name: string;
-  ip_address: string | null;
-  user_agent: string | null;
-  completed_at: Date;
+type SharedAcknowledgements = {
   terms_acknowledged: boolean;
   policies_acknowledged: boolean;
   cooling_off_acknowledged: boolean;
@@ -21,6 +16,37 @@ export type CertificateEvidence = {
   /** false when AI consent was not part of this verification (field not collected). */
   ai_consent_confirmed: boolean;
 };
+
+/** Evidence collected from the customer at the point of completion via the web link. */
+export type WebCertificateEvidence = SharedAcknowledgements & {
+  method: "web";
+  typed_name: string;
+  ip_address: string | null;
+  user_agent: string | null;
+  completed_at: Date;
+  /** Not part of the certificate hash -- carried through only to enrich the ConsentEvent audit payload. */
+  confirm_details_correct: boolean;
+  confirm_product_price_frequency: boolean;
+};
+
+/**
+ * Evidence collected from a customer who confirmed via an automated phone
+ * call (pressed 1 after hearing the full disclosure read out). The
+ * acknowledgement booleans are all true together -- the call has no
+ * granular per-item confirmation, only one bundled keypress at the end.
+ * Recording URL/duration are supplementary evidence tracked on
+ * PhoneVerificationAttempt, not part of the certificate -- they arrive
+ * asynchronously after the certificate is already created.
+ */
+export type PhoneCertificateEvidence = SharedAcknowledgements & {
+  method: "phone_call";
+  call_sid: string;
+  digits_pressed: string;
+  phone_number: string;
+  call_completed_at: Date;
+};
+
+export type CertificateEvidence = WebCertificateEvidence | PhoneCertificateEvidence;
 
 /**
  * Safe mandate subset — excludes encryptedAccountNumber.
@@ -62,7 +88,7 @@ export function createCertificateJson(input: CertificateInput): {
   const { session, sale, evidence } = input;
   const dd = sale.directDebitMandate;
 
-  const payload: Record<string, unknown> = {
+  const sharedPayload: Record<string, unknown> = {
     _version: "1",
     service: "Heimdell Verified Consent API",
 
@@ -96,22 +122,60 @@ export function createCertificateJson(input: CertificateInput): {
     direct_debit_account_holder: dd?.accountHolderName ?? null,
 
     // Consent evidence
+    verification_method: evidence.method,
     direct_debit_authorised: evidence.direct_debit_authorised,
     terms_acknowledged: evidence.terms_acknowledged,
     policies_acknowledged: evidence.policies_acknowledged,
     cooling_off_acknowledged: evidence.cooling_off_acknowledged,
     evidence_storage_acknowledged: evidence.evidence_storage_acknowledged,
     ai_consent_confirmed: evidence.ai_consent_confirmed,
-    typed_name: evidence.typed_name,
-
-    // Audit
-    completed_at: evidence.completed_at.toISOString(),
-    ip_address: evidence.ip_address,
-    user_agent: evidence.user_agent,
   };
 
-  // Deterministic proof hash — sorted keys so field order doesn't matter.
-  // Excludes mutable/sensitive fields; covers all consent-critical values.
+  if (evidence.method === "web") {
+    const payload: Record<string, unknown> = {
+      ...sharedPayload,
+      typed_name: evidence.typed_name,
+      completed_at: evidence.completed_at.toISOString(),
+      ip_address: evidence.ip_address,
+      user_agent: evidence.user_agent,
+    };
+
+    // Unchanged from before the phone-call evidence branch existed — new
+    // web certificates must hash identically to what this code always
+    // produced, so existing certificates' proof remains meaningful.
+    const canonicalFields: Record<string, unknown> = {
+      verification_id: payload.verification_id,
+      sale_id: payload.sale_id,
+      client_id: payload.client_id,
+      client_reference: payload.client_reference,
+      customer_name: payload.customer_name,
+      product_name: payload.product_name,
+      subscription_price: payload.subscription_price,
+      subscription_frequency: payload.subscription_frequency,
+      direct_debit_sort_code: payload.direct_debit_sort_code,
+      direct_debit_account_last4: payload.direct_debit_account_last4,
+      direct_debit_authorised: payload.direct_debit_authorised,
+      terms_acknowledged: payload.terms_acknowledged,
+      policies_acknowledged: payload.policies_acknowledged,
+      cooling_off_acknowledged: payload.cooling_off_acknowledged,
+      typed_name: payload.typed_name,
+      completed_at: payload.completed_at,
+      sales_channel: payload.sales_channel,
+      ai_marketing_opt_in: payload.ai_marketing_opt_in,
+      ai_consent_confirmed: payload.ai_consent_confirmed,
+    };
+
+    return { payload, proofHash: hashCanonicalFields(canonicalFields) };
+  }
+
+  const payload: Record<string, unknown> = {
+    ...sharedPayload,
+    call_sid: evidence.call_sid,
+    digits_pressed: evidence.digits_pressed,
+    phone_number: evidence.phone_number,
+    completed_at: evidence.call_completed_at.toISOString(),
+  };
+
   const canonicalFields: Record<string, unknown> = {
     verification_id: payload.verification_id,
     sale_id: payload.sale_id,
@@ -127,22 +191,26 @@ export function createCertificateJson(input: CertificateInput): {
     terms_acknowledged: payload.terms_acknowledged,
     policies_acknowledged: payload.policies_acknowledged,
     cooling_off_acknowledged: payload.cooling_off_acknowledged,
-    typed_name: payload.typed_name,
+    verification_method: payload.verification_method,
+    call_sid: payload.call_sid,
+    digits_pressed: payload.digits_pressed,
+    phone_number: payload.phone_number,
     completed_at: payload.completed_at,
     sales_channel: payload.sales_channel,
     ai_marketing_opt_in: payload.ai_marketing_opt_in,
     ai_consent_confirmed: payload.ai_consent_confirmed,
   };
 
+  return { payload, proofHash: hashCanonicalFields(canonicalFields) };
+}
+
+function hashCanonicalFields(canonicalFields: Record<string, unknown>): string {
+  // Deterministic proof hash — sorted keys so field order doesn't matter.
   const sortedCanonical = Object.fromEntries(
     Object.entries(canonicalFields).sort(([a], [b]) => a.localeCompare(b))
   );
 
-  const proofHash = createHash("sha256")
-    .update(JSON.stringify(sortedCanonical))
-    .digest("hex");
-
-  return { payload, proofHash };
+  return createHash("sha256").update(JSON.stringify(sortedCanonical)).digest("hex");
 }
 
 // ---------------------------------------------------------------------------
@@ -211,6 +279,7 @@ export function mapCertificateJsonToSafeApiSummary(
   delete safeCertificate.direct_debit_account_holder;
   delete safeCertificate.ip_address;
   delete safeCertificate.user_agent;
+  delete safeCertificate.phone_number;
 
   return {
     ...safeCertificate,

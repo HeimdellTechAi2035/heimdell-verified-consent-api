@@ -200,13 +200,23 @@ function CertificateEvidenceSummary({
             value={formatDateTime(detail.createdAt)}
           />
           <Field
-            label="Customer IP"
-            value={detail.verification.customerIpAddress}
+            label="Verification method"
+            value={detail.verification.verificationMethod === "phone_call" ? "Phone call" : "Web link"}
           />
-          <Field
-            label="Customer user agent"
-            value={detail.verification.customerUserAgent}
-          />
+          {detail.verification.verificationMethod === "phone_call" ? (
+            <Field label="Call SID" value={detail.verification.callSid} mono />
+          ) : (
+            <>
+              <Field
+                label="Customer IP"
+                value={detail.verification.customerIpAddress}
+              />
+              <Field
+                label="Customer user agent"
+                value={detail.verification.customerUserAgent}
+              />
+            </>
+          )}
         </dl>
       </Section>
 

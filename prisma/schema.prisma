@@ -7,8 +7,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 // ---------------------------------------------------------------------------
@@ -93,6 +94,31 @@ enum ApiKeyStatus {
   EXPIRED
 }
 
+enum CreditLedgerEntryType {
+  PURCHASE
+  VERIFICATION_CHARGE
+  REFUND
+  ADJUSTMENT
+}
+
+enum VerificationMethod {
+  LINK
+  PHONE_CALL
+}
+
+/// Mirrors Twilio's actual CallStatus vocabulary.
+enum PhoneCallStatus {
+  QUEUED
+  INITIATED
+  RINGING
+  IN_PROGRESS
+  COMPLETED
+  BUSY
+  FAILED
+  NO_ANSWER
+  CANCELED
+}
+
 // ---------------------------------------------------------------------------
 // Models
 // ---------------------------------------------------------------------------
@@ -115,6 +141,10 @@ model Organization {
   memberships OrganizationMembership[]
   apiKeys     ApiKey[]
   auditLogs   AuditLog[]
+
+  creditBalance      CreditBalance?
+  creditLedgerEntries CreditLedgerEntry[]
+  stripeCustomer     StripeCustomer?
 }
 
 /// Dashboard/admin user identity. Authentication provider wiring is intentionally not implemented yet.
@@ -264,6 +294,10 @@ model VerificationSession {
   /// SHA-256 hash of the raw URL token — never store the raw token.
   tokenHash   String             @unique
   status      VerificationStatus @default(PENDING)
+  /// The web link keeps working regardless of method -- this only decides
+  /// whether a phone call is ALSO attempted. Whichever path reaches the
+  /// session first completes it.
+  method      VerificationMethod @default(LINK)
   expiresAt   DateTime
   openedAt    DateTime?
   completedAt DateTime?
@@ -272,6 +306,34 @@ model VerificationSession {
 
   consentEvents ConsentEvent[]
   certificate   Certificate?
+  phoneAttempts PhoneVerificationAttempt[]
+}
+
+/// A single outbound phone-call attempt for a VerificationSession. A session
+/// can have more than one attempt if a call goes unanswered and is retried.
+model PhoneVerificationAttempt {
+  id                    String              @id @default(cuid())
+  verificationSessionId String
+  verificationSession   VerificationSession @relation(fields: [verificationSessionId], references: [id])
+
+  providerCallSid          String?         @unique
+  toPhone                  String
+  fromPhone                String
+  status                   PhoneCallStatus @default(QUEUED)
+  /// "1" (agreed) or "2" (declined) -- set once the customer responds.
+  digitsPressed            String?
+  recordingSid             String?
+  recordingUrl             String?
+  recordingDurationSeconds Int?
+  errorMessage             String?
+
+  initiatedAt DateTime  @default(now())
+  answeredAt  DateTime?
+  completedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([verificationSessionId])
 }
 
 /// Append-only audit log of customer actions within a VerificationSession.
@@ -378,4 +440,50 @@ model AuditLog {
   @@index([organizationId, createdAt])
   @@index([userId])
   @@index([entityType, entityId])
+}
+
+/// Current spendable credit balance for an Organization. Always updated
+/// alongside a CreditLedgerEntry in the same transaction -- never mutated
+/// in isolation, so the ledger can always reconstruct this value.
+model CreditBalance {
+  id             String       @id @default(cuid())
+  organizationId String       @unique
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  balance        Int          @default(0)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+}
+
+/// Append-only audit trail of every credit purchase, charge, refund, or
+/// manual adjustment for an Organization.
+model CreditLedgerEntry {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  type        CreditLedgerEntryType
+  /// Signed: positive for purchase/refund, negative for a verification charge.
+  amount      Int
+  /// Denormalized balance snapshot immediately after this entry, for fast reads.
+  balanceAfter Int
+
+  relatedSaleId                String?
+  relatedVerificationSessionId String?
+  relatedStripePaymentIntentId String?
+  description                  String?
+
+  createdAt DateTime @default(now())
+
+  @@index([organizationId, createdAt])
+}
+
+/// Maps an Organization to its Stripe Customer object. Created lazily on
+/// first Checkout Session; also the foundation for a future saved-card
+/// auto-recharge phase.
+model StripeCustomer {
+  id               String       @id @default(cuid())
+  organizationId   String       @unique
+  organization     Organization @relation(fields: [organizationId], references: [id])
+  stripeCustomerId String       @unique
+  createdAt        DateTime     @default(now())
 }

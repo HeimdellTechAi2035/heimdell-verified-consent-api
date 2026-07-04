@@ -1,6 +1,7 @@
-import type { NotificationChannel, NotificationStatus } from "@prisma/client";
+import type { NotificationChannel, NotificationStatus, VerificationMethod } from "@prisma/client";
 import { db } from "@/lib/db";
 import { deliverCustomerNotification } from "@/lib/notification-delivery";
+import { initiateVerificationCall } from "@/lib/notification-providers";
 import { queueWebhookDelivery } from "@/lib/webhooks";
 
 export type NotificationResult = {
@@ -143,8 +144,60 @@ async function createAndDeliverCustomerNotification(params: {
   };
 }
 
+async function initiatePhoneVerificationCall(params: {
+  verificationSessionId: string;
+  token: string;
+  customerPhone: string;
+}): Promise<NotificationResult> {
+  const appUrl = (process.env.APP_URL ?? "http://localhost:3000").replace(/\/$/, "");
+  const fromNumber = process.env.TWILIO_VOICE_FROM ?? process.env.TWILIO_SMS_FROM;
+
+  if (!fromNumber) {
+    return { ok: false, reason: "Voice provider phone number is not configured" };
+  }
+
+  const attempt = await db.phoneVerificationAttempt.create({
+    data: {
+      verificationSessionId: params.verificationSessionId,
+      toPhone: params.customerPhone,
+      fromPhone: fromNumber,
+      status: "QUEUED",
+    },
+    select: { id: true },
+  });
+
+  const result = await initiateVerificationCall({
+    to: params.customerPhone,
+    from: fromNumber,
+    twimlUrl: `${appUrl}/api/v1/voice/verification/${params.token}/twiml`,
+    statusCallbackUrl: `${appUrl}/api/v1/voice/verification/${params.token}/status`,
+    recordingStatusCallbackUrl: `${appUrl}/api/v1/voice/verification/${params.token}/recording-status`,
+  });
+
+  if (result.status === "initiated") {
+    await db.phoneVerificationAttempt.update({
+      where: { id: attempt.id },
+      data: { providerCallSid: result.providerCallSid, status: "INITIATED" },
+    });
+    return { ok: true, notificationId: attempt.id, status: "INITIATED" };
+  }
+
+  await db.phoneVerificationAttempt.update({
+    where: { id: attempt.id },
+    data: {
+      status: result.status === "skipped" ? "CANCELED" : "FAILED",
+      errorMessage: result.reason,
+    },
+  });
+
+  return { ok: false, notificationId: attempt.id, reason: result.reason };
+}
+
 export type VerificationLinkParams = {
   saleId: string;
+  verificationSessionId: string;
+  token: string;
+  method: VerificationMethod;
   customerPhone: string | null;
   customerEmail: string | null;
   verificationUrl: string;
@@ -213,6 +266,18 @@ export async function sendVerificationLinkNotification(
         subject: null,
         messageBody: body,
         allowRetry: false,
+      })
+    );
+  }
+
+  // The link keeps working regardless of method -- a phone call is placed
+  // in addition, never instead of, the link above.
+  if (params.method === "PHONE_CALL" && params.customerPhone) {
+    results.push(
+      await initiatePhoneVerificationCall({
+        verificationSessionId: params.verificationSessionId,
+        token: params.token,
+        customerPhone: params.customerPhone,
       })
     );
   }

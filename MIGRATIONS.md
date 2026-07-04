@@ -91,6 +91,18 @@ Do not log, export into tickets, or paste into chat:
 
 Only `accountNumberLast4` is safe for display.
 
+## Connection pooling and migrations
+
+If `DATABASE_URL` points at a transaction-mode connection pooler (e.g.
+Supabase's port-6543 pooler), `prisma migrate dev`/`status`/`deploy` can hang
+indefinitely with no error — these commands need session-level locks that
+transaction pooling doesn't support. Set a second `DIRECT_URL` in `.env.local`
+pointing at a session-mode or direct connection (Supabase: the "Session
+pooler" option, still IPv4-compatible unlike the direct connection) and add
+`directUrl = env("DIRECT_URL")` to the `datasource` block — Prisma uses it
+automatically for migration commands while the app keeps using the pooled
+`DATABASE_URL` at runtime.
+
 ## Commands
 
 | Command | Use |

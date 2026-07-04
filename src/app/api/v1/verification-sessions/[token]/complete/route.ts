@@ -3,12 +3,11 @@
 // updates the sale to VERIFIED, and creates the immutable Certificate.
 
 import { type NextRequest, NextResponse } from "next/server";
-import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { hashToken } from "@/lib/crypto";
 import { errors } from "@/lib/errors";
 import { completeVerificationSchema } from "@/lib/validation";
-import { createCertificateJson } from "@/lib/certificate";
+import { checkCompletionGuards, completeVerificationSession } from "@/lib/verification-completion";
 import {
   sendVerificationCompletedNotification,
   sendCertificateCreatedNotification,
@@ -110,36 +109,32 @@ export async function POST(
   }
 
   // ------------------------------------------------------------------
-  // 4. Status guards — idempotency-safe
+  // 4. Status guards — must run before the name-match check below, to
+  //    preserve the original guards-then-validate ordering exactly
   // ------------------------------------------------------------------
-  if (session.status === "COMPLETED") {
-    return NextResponse.json(
-      {
-        ok: false,
-        error: {
-          code: "CONFLICT",
-          message: "Verification has already been completed",
+  const guardFailure = await checkCompletionGuards(session, completedAt);
+  if (guardFailure) {
+    if (guardFailure.reason === "ALREADY_COMPLETED") {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: {
+            code: "CONFLICT",
+            message: "Verification has already been completed",
+          },
         },
-      },
-      { status: 409 }
-    );
-  }
-
-  if (session.status === "DECLINED") {
-    return NextResponse.json(
-      {
-        ok: false,
-        error: { code: "CONFLICT", message: "Verification was declined" },
-      },
-      { status: 409 }
-    );
-  }
-
-  if (session.expiresAt < completedAt) {
-    await db.verificationSession.update({
-      where: { id: session.id },
-      data: { status: "EXPIRED" },
-    });
+        { status: 409 }
+      );
+    }
+    if (guardFailure.reason === "ALREADY_DECLINED") {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: { code: "CONFLICT", message: "Verification was declined" },
+        },
+        { status: 409 }
+      );
+    }
     return NextResponse.json(
       {
         ok: false,
@@ -165,125 +160,39 @@ export async function POST(
   }
 
   // ------------------------------------------------------------------
-  // 6. Build certificate payload (outside transaction — pure computation)
+  // 6. Certificate + consent-event transaction (shared with the phone-call
+  //    completion path). Guards were already checked above, but
+  //    completeVerificationSession re-checks them defensively (cheap,
+  //    idempotent) in case anything changed between the two calls.
   // ------------------------------------------------------------------
-  const { payload: certPayload, proofHash } = createCertificateJson({
-    session,
-    sale,
-    evidence: {
-      typed_name: data.typed_name,
-      ip_address: ipAddress,
-      user_agent: userAgent,
-      completed_at: completedAt,
-      terms_acknowledged: data.confirm_terms,
-      policies_acknowledged: data.confirm_policies,
-      cooling_off_acknowledged: data.confirm_cooling_off,
-      direct_debit_authorised: data.authorise_direct_debit,
-      evidence_storage_acknowledged: data.confirm_evidence_storage,
-      ai_consent_confirmed: data.confirm_ai_consent ?? false,
-    },
-  });
-
-  // ------------------------------------------------------------------
-  // 7. Atomic transaction: events → session → sale → certificate
-  //    Certificate.verificationSessionId is @unique, so a second
-  //    concurrent completion will fail with P2002 (unique constraint).
-  // ------------------------------------------------------------------
-  let cert: { id: string };
-
+  let result;
   try {
-    const result = await db.$transaction(async (tx) => {
-      // Consent audit events
-      await tx.consentEvent.createMany({
-        data: [
-          {
-            verificationSessionId: session.id,
-            eventType: "TERMS_ACKNOWLEDGED",
-            eventPayload: {
-              confirm_terms: true,
-              confirm_details_correct: data.confirm_details_correct,
-              confirm_product_price_frequency:
-                data.confirm_product_price_frequency,
-            } as unknown as Prisma.InputJsonValue,
-            ipAddress,
-            userAgent,
-          },
-          {
-            verificationSessionId: session.id,
-            eventType: "POLICIES_ACKNOWLEDGED",
-            eventPayload: {
-              confirm_policies: true,
-            } as unknown as Prisma.InputJsonValue,
-            ipAddress,
-            userAgent,
-          },
-          {
-            verificationSessionId: session.id,
-            eventType: "COOLING_OFF_ACKNOWLEDGED",
-            eventPayload: {
-              confirm_cooling_off: true,
-            } as unknown as Prisma.InputJsonValue,
-            ipAddress,
-            userAgent,
-          },
-          {
-            verificationSessionId: session.id,
-            eventType: "DIRECT_DEBIT_AUTHORISED",
-            eventPayload: {
-              authorise_direct_debit: true,
-            } as unknown as Prisma.InputJsonValue,
-            ipAddress,
-            userAgent,
-          },
-          {
-            verificationSessionId: session.id,
-            eventType: "VERIFICATION_COMPLETED",
-            eventPayload: {
-              typed_name: data.typed_name,
-              completed_at: completedAt.toISOString(),
-              confirm_evidence_storage: data.confirm_evidence_storage,
-            } as unknown as Prisma.InputJsonValue,
-            ipAddress,
-            userAgent,
-          },
-        ],
-      });
-
-      // Mark session complete
-      await tx.verificationSession.update({
-        where: { id: session.id },
-        data: { status: "COMPLETED", completedAt },
-      });
-
-      // Mark sale verified
-      await tx.sale.update({
-        where: { id: sale.id },
-        data: { status: "VERIFIED" },
-      });
-
-      // Create immutable certificate
-      const certificate = await tx.certificate.create({
-        data: {
-          verificationSessionId: session.id,
-          certificateJson: {
-            ...certPayload,
-            proof_hash: proofHash,
-          } as unknown as Prisma.InputJsonValue,
-          proofHash,
-        },
-        select: { id: true },
-      });
-
-      return certificate;
+    result = await completeVerificationSession({
+      session,
+      sale,
+      evidence: {
+        method: "web",
+        typed_name: data.typed_name,
+        ip_address: ipAddress,
+        user_agent: userAgent,
+        completed_at: completedAt,
+        terms_acknowledged: data.confirm_terms,
+        policies_acknowledged: data.confirm_policies,
+        cooling_off_acknowledged: data.confirm_cooling_off,
+        direct_debit_authorised: data.authorise_direct_debit,
+        evidence_storage_acknowledged: data.confirm_evidence_storage,
+        ai_consent_confirmed: data.confirm_ai_consent ?? false,
+        confirm_details_correct: data.confirm_details_correct,
+        confirm_product_price_frequency: data.confirm_product_price_frequency,
+      },
     });
-
-    cert = result;
   } catch (err) {
-    // P2002 = unique constraint — certificate already created (race condition)
-    if (
-      err instanceof Prisma.PrismaClientKnownRequestError &&
-      err.code === "P2002"
-    ) {
+    console.error("[complete] transaction failed:", err);
+    return errors.internal();
+  }
+
+  if (!result.ok) {
+    if (result.reason === "ALREADY_COMPLETED") {
       return NextResponse.json(
         {
           ok: false,
@@ -295,12 +204,31 @@ export async function POST(
         { status: 409 }
       );
     }
-    console.error("[complete] transaction failed:", err);
-    return errors.internal();
+    if (result.reason === "ALREADY_DECLINED") {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: { code: "CONFLICT", message: "Verification was declined" },
+        },
+        { status: 409 }
+      );
+    }
+    return NextResponse.json(
+      {
+        ok: false,
+        error: {
+          code: "GONE",
+          message: "This verification link has expired",
+        },
+      },
+      { status: 410 }
+    );
   }
 
+  const cert = { id: result.certificateId };
+
   // ------------------------------------------------------------------
-  // 8. Fire notification logs — non-blocking; must not break core flow
+  // 7. Fire notification logs — non-blocking; must not break core flow
   // ------------------------------------------------------------------
   const notifyParams = {
     saleId: sale.id,
@@ -323,7 +251,7 @@ export async function POST(
   );
 
   // ------------------------------------------------------------------
-  // 9. Return success — never include tokenHash or encryptedAccountNumber
+  // 8. Return success — never include tokenHash or encryptedAccountNumber
   // ------------------------------------------------------------------
   return NextResponse.json(
     {
@@ -332,7 +260,7 @@ export async function POST(
       verification_session_id: session.id,
       sale_id: sale.id,
       certificate_id: cert.id,
-      completed_at: completedAt.toISOString(),
+      completed_at: result.completedAt.toISOString(),
       message: "Verification completed successfully",
     },
     { status: 200 }

@@ -2,13 +2,33 @@
 // Composes dashboard navigation with the main content area and top app bar.
 
 import { type ReactNode } from "react";
+import Link from "next/link";
 import { LegalFooter } from "@/components/LegalFooter";
 import type { OrganizationContext } from "@/lib/dashboard-auth";
 import { InstallPrompt } from "@/components/pwa/InstallPrompt";
 import { getPwaAppKeyForRole } from "@/lib/pwa-identity";
+import { CLIENT_OWNER_AND_PLATFORM_ROLES } from "@/lib/dashboard-role-policy";
+import { getOrganizationCreditBalance } from "@/lib/dashboard-credits";
 import { DashboardSidebar, DashboardTabletNav } from "./DashboardSidebar";
 
-export function DashboardShell({
+async function CreditBalanceBadge({ context }: { context: OrganizationContext }) {
+  if (!(CLIENT_OWNER_AND_PLATFORM_ROLES as readonly string[]).includes(context.membership.role)) {
+    return null;
+  }
+
+  const balance = await getOrganizationCreditBalance(context.organization.id);
+
+  return (
+    <Link
+      href="/dashboard/credits"
+      className="inline-flex items-center gap-1.5 bg-blue-50 text-blue-700 text-xs font-medium px-3 py-1.5 rounded-full border border-blue-200 hover:bg-blue-100"
+    >
+      {balance} credits
+    </Link>
+  );
+}
+
+export async function DashboardShell({
   children,
   context,
 }: {
@@ -35,6 +55,7 @@ export function DashboardShell({
             )}
           </div>
           <div className="flex flex-wrap items-center gap-3">
+            {context && <CreditBalanceBadge context={context} />}
             <span className="inline-flex items-center gap-1.5 bg-green-50 text-green-700 text-xs font-medium px-3 py-1.5 rounded-full border border-green-200">
               <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />
               Auth active

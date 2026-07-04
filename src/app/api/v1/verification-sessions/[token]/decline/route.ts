@@ -3,11 +3,11 @@
 // A declined session can never be subsequently completed.
 
 import { type NextRequest, NextResponse } from "next/server";
-import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { hashToken } from "@/lib/crypto";
 import { errors } from "@/lib/errors";
 import { declineVerificationSchema } from "@/lib/validation";
+import { declineVerificationSession } from "@/lib/verification-decline";
 import { sendVerificationDeclinedNotification } from "@/lib/notifications";
 import {
   enforceRateLimit,
@@ -55,7 +55,6 @@ export async function POST(
     req.headers.get("x-real-ip") ??
     null;
   const userAgent = req.headers.get("user-agent") ?? null;
-  const declinedAt = new Date();
 
   // ------------------------------------------------------------------
   // 3. Look up session by hashed token
@@ -91,41 +90,42 @@ export async function POST(
   }
 
   // ------------------------------------------------------------------
-  // 4. Status guards
+  // 4. Guards + audit event + session/sale update (shared with the
+  //    phone-call decline path)
   // ------------------------------------------------------------------
-  if (session.status === "COMPLETED") {
-    return NextResponse.json(
-      {
-        ok: false,
-        error: {
-          code: "CONFLICT",
-          message: "Verification has already been completed and cannot be declined",
-        },
+  let result;
+  try {
+    result = await declineVerificationSession({
+      session: {
+        id: session.id,
+        saleId: session.sale.id,
+        status: session.status,
+        expiresAt: session.expiresAt,
+        declinedAt: session.declinedAt,
       },
-      { status: 409 }
-    );
-  }
-
-  // Idempotent: already declined — return a safe already-declined response
-  if (session.status === "DECLINED") {
-    return NextResponse.json(
-      {
-        ok: true,
-        status: "DECLINED",
-        verification_session_id: session.id,
-        sale_id: session.sale.id,
-        declined_at: session.declinedAt?.toISOString() ?? declinedAt.toISOString(),
-        message: "Verification was already declined",
-      },
-      { status: 200 }
-    );
-  }
-
-  if (session.expiresAt < declinedAt) {
-    await db.verificationSession.update({
-      where: { id: session.id },
-      data: { status: "EXPIRED" },
+      reason: data.reason,
+      details: data.details,
+      ipAddress,
+      userAgent,
     });
+  } catch (err) {
+    console.error("[decline] transaction failed:", err);
+    return errors.internal();
+  }
+
+  if (!result.ok) {
+    if (result.reason === "ALREADY_COMPLETED") {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: {
+            code: "CONFLICT",
+            message: "Verification has already been completed and cannot be declined",
+          },
+        },
+        { status: 409 }
+      );
+    }
     return NextResponse.json(
       {
         ok: false,
@@ -138,41 +138,23 @@ export async function POST(
     );
   }
 
-  // ------------------------------------------------------------------
-  // 5. Atomic transaction: audit event → session → sale
-  // ------------------------------------------------------------------
-  try {
-    await db.$transaction(async (tx) => {
-      await tx.consentEvent.create({
-        data: {
-          verificationSessionId: session.id,
-          eventType: "VERIFICATION_DECLINED",
-          eventPayload: {
-            reason: data.reason,
-            details: data.details ?? null,
-          } as unknown as Prisma.InputJsonValue,
-          ipAddress,
-          userAgent,
-        },
-      });
-
-      await tx.verificationSession.update({
-        where: { id: session.id },
-        data: { status: "DECLINED", declinedAt },
-      });
-
-      await tx.sale.update({
-        where: { id: session.sale.id },
-        data: { status: "DECLINED" },
-      });
-    });
-  } catch (err) {
-    console.error("[decline] transaction failed:", err);
-    return errors.internal();
+  // Idempotent: already declined — return a safe already-declined response
+  if (result.alreadyDeclined) {
+    return NextResponse.json(
+      {
+        ok: true,
+        status: "DECLINED",
+        verification_session_id: session.id,
+        sale_id: session.sale.id,
+        declined_at: result.declinedAt.toISOString(),
+        message: "Verification was already declined",
+      },
+      { status: 200 }
+    );
   }
 
   // ------------------------------------------------------------------
-  // 6. Fire notification logs — non-blocking; must not break core flow
+  // 5. Fire notification logs — non-blocking; must not break core flow
   // ------------------------------------------------------------------
   sendVerificationDeclinedNotification({
     saleId: session.sale.id,
@@ -186,7 +168,7 @@ export async function POST(
   );
 
   // ------------------------------------------------------------------
-  // 7. Return success — no certificate is created for declined sessions
+  // 6. Return success — no certificate is created for declined sessions
   // ------------------------------------------------------------------
   return NextResponse.json(
     {
@@ -194,7 +176,7 @@ export async function POST(
       status: "DECLINED",
       verification_session_id: session.id,
       sale_id: session.sale.id,
-      declined_at: declinedAt.toISOString(),
+      declined_at: result.declinedAt.toISOString(),
       message: "Verification declined",
     },
     { status: 200 }

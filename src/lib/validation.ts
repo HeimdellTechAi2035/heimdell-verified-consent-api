@@ -9,6 +9,9 @@ import { z } from "zod";
 /** Strip spaces and hyphens — used to normalise sort codes and account numbers. */
 const normaliseDigitsOnly = (v: string) => v.replace(/[\s-]/g, "");
 
+/** Loose E.164-ish check — Twilio Voice needs a real dialable number. */
+const PHONE_CALL_CAPABLE_PATTERN = /^\+?[1-9]\d{7,14}$/;
+
 // ---------------------------------------------------------------------------
 // Sale intake schema
 // Matches the POST /api/v1/sales/intake payload shape.
@@ -110,6 +113,16 @@ export const saleIntakeSchema = z.object({
       cooling_off_days: z.number().int().min(1).max(365).optional(),
     })
     .optional(),
+
+  verification_method: z.enum(["link", "phone_call"]).default("link"),
+}).superRefine((data, ctx) => {
+  if (data.verification_method === "phone_call" && !PHONE_CALL_CAPABLE_PATTERN.test(data.customer.phone)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["customer", "phone"],
+      message: "customer.phone must be a valid dialable number to use phone_call verification",
+    });
+  }
 });
 
 // ---------------------------------------------------------------------------

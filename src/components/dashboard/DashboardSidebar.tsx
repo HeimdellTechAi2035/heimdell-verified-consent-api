@@ -170,6 +170,17 @@ const NAV_SECTIONS: NavSection[] = [
   {
     items: [
       {
+        href: "/dashboard/credits",
+        label: "Credits",
+        section: "credits",
+        icon: (
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+              d="M12 8c-1.657 0-3 .672-3 1.5S10.343 11 12 11s3 .672 3 1.5-1.343 1.5-3 1.5m0-6V6m0 1.5V15m0 1.5V15m-7-3a7 7 0 1114 0 7 7 0 01-14 0z" />
+          </svg>
+        ),
+      },
+      {
         href: "/dashboard/settings",
         label: "Settings",
         section: "settings",

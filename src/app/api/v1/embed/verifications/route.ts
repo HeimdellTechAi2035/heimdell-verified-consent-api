@@ -18,6 +18,8 @@ import {
   verifyEmbedToken,
 } from "@/lib/embed-token";
 import { isAllowedEmbedRequestOrigin } from "@/lib/embed-origin";
+import { chargeCreditsForVerification, InsufficientCreditsError } from "@/lib/credit-ledger";
+import { CREDIT_COST_LINK } from "@/lib/credit-pricing";
 
 const APP_URL = process.env.APP_URL ?? "http://localhost:3000";
 const VERIFICATION_EXPIRY_MINUTES = 30;
@@ -144,60 +146,84 @@ export async function POST(request: Request) {
     coolingOffDays: input.consent.coolingOffDays,
   });
 
-  const sale = await db.sale.create({
-    data: {
-      clientId: client.id,
-      clientReference: input.clientReference,
-      agentId: input.sellerReference ?? null,
-      customerName: input.customer.fullName,
-      customerEmail: input.customer.email ?? null,
-      customerPhone: input.customer.phone,
-      customerAddress: input.customer.address,
-      productName: input.product.name,
-      productPrice: input.product.subscriptionPrice,
-      productFrequency: input.product.subscriptionFrequency,
-      productTerms: input.product.contractLength
-        ? `Contract length: ${input.product.contractLength}\n\n${input.product.termsSummary}`
-        : input.product.termsSummary,
-      productPolicies: input.product.policiesSummary,
-      salesChannel: input.product.salesChannel,
-      aiMarketingOptIn: input.consent.aiMarketingOptIn,
-      coolingOffDays: input.consent.coolingOffDays,
-      policySnapshot,
-      directDebitMandate: {
-        create: {
-          bankName: input.payment.bankName,
-          sortCode: input.payment.sortCode,
-          accountNumberLast4,
-          encryptedAccountNumber,
-          accountHolderName: input.payment.accountHolderName,
+  let sale;
+  try {
+    sale = await db.$transaction(async (tx) => {
+      const created = await tx.sale.create({
+        data: {
+          clientId: client.id,
+          clientReference: input.clientReference,
+          agentId: input.sellerReference ?? null,
+          customerName: input.customer.fullName,
+          customerEmail: input.customer.email ?? null,
+          customerPhone: input.customer.phone,
+          customerAddress: input.customer.address,
+          productName: input.product.name,
+          productPrice: input.product.subscriptionPrice,
+          productFrequency: input.product.subscriptionFrequency,
+          productTerms: input.product.contractLength
+            ? `Contract length: ${input.product.contractLength}\n\n${input.product.termsSummary}`
+            : input.product.termsSummary,
+          productPolicies: input.product.policiesSummary,
+          salesChannel: input.product.salesChannel,
+          aiMarketingOptIn: input.consent.aiMarketingOptIn,
+          coolingOffDays: input.consent.coolingOffDays,
+          policySnapshot,
+          directDebitMandate: {
+            create: {
+              bankName: input.payment.bankName,
+              sortCode: input.payment.sortCode,
+              accountNumberLast4,
+              encryptedAccountNumber,
+              accountHolderName: input.payment.accountHolderName,
+            },
+          },
+          verificationSessions: {
+            create: {
+              tokenHash,
+              expiresAt,
+            },
+          },
         },
-      },
-      verificationSessions: {
-        create: {
-          tokenHash,
-          expiresAt,
+        include: {
+          verificationSessions: {
+            orderBy: { createdAt: "desc" },
+            take: 1,
+            select: {
+              id: true,
+              status: true,
+              expiresAt: true,
+            },
+          },
         },
-      },
-    },
-    include: {
-      verificationSessions: {
-        orderBy: { createdAt: "desc" },
-        take: 1,
-        select: {
-          id: true,
-          status: true,
-          expiresAt: true,
-        },
-      },
-    },
-  });
+      });
+
+      await chargeCreditsForVerification(tx, {
+        organizationId: claims.organizationId,
+        cost: CREDIT_COST_LINK,
+        saleId: created.id,
+        verificationSessionId: created.verificationSessions[0].id,
+      });
+
+      return created;
+    });
+  } catch (error) {
+    if (error instanceof InsufficientCreditsError) {
+      return errors.paymentRequired(
+        "This organization does not have enough credits for a new verification."
+      );
+    }
+    throw error;
+  }
 
   const session = sale.verificationSessions[0];
   const verificationUrl = `${APP_URL}/v/${tokenRaw}`;
 
   sendVerificationLinkNotification({
     saleId: sale.id,
+    verificationSessionId: session.id,
+    token: tokenRaw,
+    method: "LINK",
     customerPhone: sale.customerPhone ?? null,
     customerEmail: sale.customerEmail ?? null,
     verificationUrl,
