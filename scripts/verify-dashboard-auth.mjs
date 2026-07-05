@@ -32,6 +32,7 @@ const dashboardAuth = loadModule("src/lib/dashboard-auth.ts", {
     },
   },
   "@/lib/db": { db: {} },
+  "@/lib/dashboard-performance": { nowMs: () => 0, logDashboardTiming: () => {} },
   "@/lib/supabase-server": {
     createSupabaseServerClient() {
       throw new Error("Supabase should not be called by pure resolver tests");
@@ -104,7 +105,8 @@ assert.equal(authenticated.status, "authenticated");
 assert.equal(authenticated.context.organization.id, "org_1");
 assert.equal(authenticated.context.membership.role, "ADMIN");
 
-assert.equal(authz.canManageApiKeys("ADMIN"), true);
+assert.equal(authz.canManageApiKeys("PLATFORM_ADMIN"), true);
+assert.equal(authz.canManageApiKeys("ADMIN"), false);
 assert.equal(authz.canManageApiKeys("SELLER"), false);
 assert.equal(authz.canViewCertificates("SELLER"), false);
 

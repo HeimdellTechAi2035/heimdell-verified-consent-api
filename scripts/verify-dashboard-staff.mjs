@@ -52,7 +52,7 @@ assert.equal(policy.roleCanAccessDashboardSection("PLATFORM_ADMIN", "staff"), tr
 assert.equal(policy.roleCanAccessDashboardSection("OWNER", "staff"), true);
 assert.equal(policy.roleCanAccessDashboardSection("CLIENT_OWNER", "staff"), true);
 assert.equal(policy.roleCanAccessDashboardSection("ADMIN", "staff"), true);
-assert.equal(policy.roleCanAccessDashboardSection("CLIENT_MANAGER", "staff"), false);
+assert.equal(policy.roleCanAccessDashboardSection("CLIENT_MANAGER", "staff"), true);
 assert.equal(policy.roleCanAccessDashboardSection("SELLER", "staff"), false);
 assert.equal(policy.roleCanAccessDashboardSection("COMPLIANCE_VIEWER", "staff"), false);
 

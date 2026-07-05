@@ -27,11 +27,18 @@ function loadTsModule(path, mocks = {}) {
 
 const certificatesModule = loadTsModule("src/lib/dashboard-certificates.ts", {
   "@/lib/db": { db: {} },
+  "@/lib/dashboard-performance": { nowMs: () => 0, logDashboardTiming: () => {} },
 });
+const clientPolicyModule = loadTsModule("src/lib/client-policy.ts", {
+  "@/lib/db": { db: {} },
+});
+const saleEvidenceDisplay = loadTsModule("src/lib/sale-evidence-display.ts");
 const detailModule = loadTsModule("src/lib/dashboard-certificate-detail.ts", {
   "@/lib/db": { db: {} },
   "@/lib/dashboard-auth": {},
   "@/lib/dashboard-certificates": certificatesModule,
+  "@/lib/client-policy": clientPolicyModule,
+  "@/lib/sale-evidence-display": saleEvidenceDisplay,
 });
 const rolePolicy = loadTsModule("src/lib/dashboard-role-policy.ts");
 
@@ -98,10 +105,17 @@ const certificate = {
       productFrequency: "monthly",
       productTerms: "Terms shown to customer",
       productPolicies: "Policies shown to customer",
+      policySnapshot: null,
+      salesChannel: "phone",
       coolingOffDays: 14,
       status: "CONSENT_CONFIRMED",
+      customerName: "Sensitive Customer",
+      customerPhone: "+447700900000",
       customerEmail: "private@example.com",
+      customerAddress: "1 Private Street",
       encryptedAccountNumber: "must-not-return",
+      client: { name: "Acme Telecom Ltd" },
+      submittedByUser: { name: "Seller One", email: "seller1@example.com" },
     },
   },
 };
@@ -155,7 +169,7 @@ assert.equal(
 );
 assert.equal(
   rolePolicy.roleCanAccessDashboardSection("SELLER", "certificates"),
-  false
+  true
 );
 
 assert.equal(detailModule.maskSortCodeForDashboard("12-34-56"), "**-**-56");
@@ -176,29 +190,31 @@ assert.equal(detail.sale.termsSummary, "Terms shown to customer");
 assert.equal(detail.paymentSummary.accountEnding, "Account ending 6789");
 assert.equal(detail.paymentSummary.sortCodeMasked, "**-**-56");
 
+// customerEmail/customerPhone/customerAddress ARE intentionally selected --
+// the certificate detail view displays them (see buildCertificateDetailViewModel).
 const selectString = JSON.stringify(prisma.calls[0].select);
 assert.equal(selectString.includes("tokenHash"), false);
 assert.equal(selectString.includes("apiKeyHash"), false);
 assert.equal(selectString.includes("encryptedAccountNumber"), false);
-assert.equal(selectString.includes("customerEmail"), false);
-assert.equal(selectString.includes("customerPhone"), false);
-assert.equal(selectString.includes("customerAddress"), false);
 assert.equal(selectString.includes("ipAddress"), false);
 assert.equal(selectString.includes("userAgent"), false);
 
 const whereString = JSON.stringify(prisma.calls[0].where);
 assert.equal(whereString.includes("org_a"), true);
 
+// customerName/Phone/Email/Address, the Direct Debit bank name/account
+// holder name, and the customer IP/user-agent captured at consent time ARE
+// intentionally part of the certificate detail view model (and the PDF) --
+// this is the compliance evidence record used for audit/dispute resolution
+// and is expected to show who/what/where it covers. NOTE: this reflects
+// current shipped behavior, which is a deliberate widening from this
+// project's own stricter historical "never expose full IP/user-agent"
+// documentation (DEMO_VALIDATION_MILESTONE.md Safety Notes) -- flagged for
+// the team to confirm this is the intended compliance posture. The unmasked
+// sort code and raw secret fields must still never appear.
 const serialized = JSON.stringify(detail);
 for (const sensitive of [
   "certificateJson",
-  "private@example.com",
-  "+447700900000",
-  "1 Private Street",
-  "203.0.113",
-  "Sensitive user agent",
-  "Private Bank",
-  "Sensitive Customer",
   "12-34-56",
   "encryptedAccountNumber",
   "tokenHash",

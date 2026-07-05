@@ -375,7 +375,8 @@ Expected before completion:
 - intake returns `ok: true`, `sale_id`, `verification_session_id`, `verification_url`, and `status: PENDING`
 - seller login at `/login` shows the new sale on `/dashboard/my-sales`
 - seller sees pending sale/verification status only for their own submitted sale
-- seller cannot access `/dashboard/sales`, `/dashboard/verifications`, `/dashboard/certificates`, `/dashboard/staff`, `/dashboard/api-keys`, `/dashboard/webhooks`, `/dashboard/integrations`, `/dashboard/clients`, or `/dashboard/settings`
+- seller cannot access `/dashboard/sales`, `/dashboard/verifications`, `/dashboard/staff`, `/dashboard/api-keys`, `/dashboard/webhooks`, `/dashboard/integrations`, `/dashboard/clients`, or `/dashboard/settings`
+- seller CAN open `/dashboard/certificates` and `/dashboard/certificates/[id]` (and the certificate PDF), scoped to only their own submitted sales -- not the rest of the organization's certificates
 
 Complete the customer verification:
 

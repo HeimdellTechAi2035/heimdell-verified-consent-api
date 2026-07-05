@@ -27,6 +27,7 @@ function loadTsModule(path, mocks = {}) {
 
 const overview = loadTsModule("src/lib/dashboard-overview.ts", {
   "@/lib/db": { db: {} },
+  "@/lib/dashboard-performance": { nowMs: () => 0, logDashboardTiming: () => {} },
 });
 
 const orgAContext = {
@@ -162,6 +163,24 @@ function createMockPrisma() {
         const organizationId = organizationIdFromWhere(args.where);
         return certificates.filter((cert) => cert.organizationId === organizationId)
           .length;
+      },
+    },
+    clientPolicy: {
+      async count(args) {
+        calls.push(["clientPolicy.count", args]);
+        return 0;
+      },
+    },
+    organizationMembership: {
+      async count(args) {
+        calls.push(["organizationMembership.count", args]);
+        return 0;
+      },
+    },
+    notification: {
+      async count(args) {
+        calls.push(["notification.count", args]);
+        return 0;
       },
     },
   };

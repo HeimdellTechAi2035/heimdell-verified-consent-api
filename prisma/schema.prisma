@@ -167,6 +167,9 @@ model Organization {
   creditBalance      CreditBalance?
   creditLedgerEntries CreditLedgerEntry[]
   stripeCustomer     StripeCustomer?
+
+  @@index([archivedAt])
+  @@index([onboardingStatus])
 }
 
 /// Dashboard/admin user identity. Authentication provider wiring is intentionally not implemented yet.
@@ -286,6 +289,7 @@ model Sale {
   notifications        Notification[]
 
   @@index([submittedByUserId])
+  @@index([clientId])
 }
 
 /// Direct Debit mandate details associated with a Sale.
@@ -329,6 +333,9 @@ model VerificationSession {
   consentEvents ConsentEvent[]
   certificate   Certificate?
   phoneAttempts PhoneVerificationAttempt[]
+
+  @@index([saleId])
+  @@index([status])
 }
 
 /// A single outbound phone-call attempt for a VerificationSession. A session
@@ -442,6 +449,7 @@ model Notification {
   deliveryId        String?            @unique
 
   @@index([channel, status, nextAttemptAt])
+  @@index([saleId])
 }
 
 /// Append-only dashboard/admin audit trail. Never store raw secrets or bank details in metadata.

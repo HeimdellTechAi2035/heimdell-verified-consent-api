@@ -45,6 +45,8 @@ const expectedSections = [
   "settings",
   "integrations",
   "notifications",
+  "credits",
+  "signups",
 ];
 
 assert.deepEqual(policy.DASHBOARD_SECTIONS, expectedSections);
@@ -92,14 +94,17 @@ const expectedMatrix = {
     "OWNER",
     "ADMIN",
     "MANAGER",
+    "SELLER",
   ],
-  staff: ["PLATFORM_ADMIN", "CLIENT_OWNER", "OWNER", "ADMIN"],
+  staff: ["PLATFORM_ADMIN", "CLIENT_OWNER", "CLIENT_MANAGER", "OWNER", "ADMIN"],
   clients: ["PLATFORM_ADMIN", "OWNER"],
   "api-keys": ["PLATFORM_ADMIN", "OWNER"],
   webhooks: ["PLATFORM_ADMIN", "OWNER"],
-  settings: ["PLATFORM_ADMIN", "CLIENT_OWNER", "OWNER", "ADMIN"],
+  settings: ["PLATFORM_ADMIN", "CLIENT_OWNER", "CLIENT_MANAGER", "OWNER", "ADMIN"],
   integrations: ["PLATFORM_ADMIN", "OWNER"],
-  notifications: ["PLATFORM_ADMIN", "CLIENT_OWNER", "OWNER", "ADMIN"],
+  notifications: ["PLATFORM_ADMIN", "CLIENT_OWNER", "CLIENT_MANAGER", "OWNER", "ADMIN"],
+  credits: ["PLATFORM_ADMIN", "CLIENT_OWNER", "CLIENT_MANAGER", "OWNER", "ADMIN"],
+  signups: ["PLATFORM_ADMIN", "OWNER"],
 };
 const allRoles = [
   "PLATFORM_ADMIN",

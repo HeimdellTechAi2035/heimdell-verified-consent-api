@@ -75,7 +75,7 @@ assert.match(intakeSource, /where: \{ organizationId \}/);
 assert.match(intakeSource, /submittedByUserId,/);
 assert.match(intakeSource, /"seller_email is not valid for this organization"/);
 assert.ok(
-  intakeSource.indexOf("resolveSubmittedByUserId") < intakeSource.indexOf("db.sale.create"),
+  intakeSource.indexOf("resolveSubmittedByUserId") < intakeSource.indexOf(".sale.create"),
   "Seller ownership must be resolved before sale creation."
 );
 
@@ -83,12 +83,20 @@ const completeSource = readFileSync(
   "src/app/api/v1/verification-sessions/[token]/complete/route.ts",
   "utf8"
 );
-assert.match(completeSource, /data: \{ status: "COMPLETED", completedAt \}/);
-assert.match(completeSource, /data: \{ status: "VERIFIED" \}/);
-assert.match(completeSource, /tx\.certificate\.create/);
 assert.match(completeSource, /certificate_id: cert\.id/);
 assert.doesNotMatch(completeSource, /encryptedAccountNumber:\s*true/);
 assert.doesNotMatch(completeSource, /tokenHash:\s*true/);
+
+// Completion logic (session -> COMPLETED, sale -> VERIFIED, certificate
+// creation) now lives in the shared verification-completion.ts helper so the
+// web and phone-call verification flows produce identical certificates.
+const completionHelperSource = readFileSync(
+  "src/lib/verification-completion.ts",
+  "utf8"
+);
+assert.match(completionHelperSource, /data: \{ status: "COMPLETED", completedAt \}/);
+assert.match(completionHelperSource, /data: \{ status: "VERIFIED" \}/);
+assert.match(completionHelperSource, /tx\.certificate\.create/);
 
 const mySalesSource = readFileSync("src/app/dashboard/my-sales/page.tsx", "utf8");
 assert.match(mySalesSource, /submittedByUserId: userId/);
@@ -106,7 +114,6 @@ assert.doesNotMatch(mySalesSource, /apiKeyHash/);
 for (const blockedSection of [
   "sales",
   "verifications",
-  "certificates",
   "staff",
   "api-keys",
   "webhooks",

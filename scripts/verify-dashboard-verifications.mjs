@@ -25,8 +25,12 @@ function loadTsModule(path, mocks = {}) {
   return module.exports;
 }
 
+const saleEvidenceDisplay = loadTsModule("src/lib/sale-evidence-display.ts");
+
 const verificationsModule = loadTsModule("src/lib/dashboard-verifications.ts", {
   "@/lib/db": { db: {} },
+  "@/lib/dashboard-performance": { nowMs: () => 0, logDashboardTiming: () => {} },
+  "@/lib/sale-evidence-display": saleEvidenceDisplay,
 });
 
 const orgAContext = {
@@ -61,6 +65,7 @@ const sessions = [
       id: `sale_a_${String(index + 1).padStart(2, "0")}`,
       clientReference: `A-${String(index + 1).padStart(3, "0")}`,
       productName: `Product A ${index + 1}`,
+      productPrice: { toString: () => String(20 + index) },
       status: index % 2 === 0 ? "PENDING" : "VERIFIED",
       customerEmail: `private-${index}@example.com`,
       customerPhone: "+447700900000",
@@ -86,6 +91,7 @@ const sessions = [
       id: "sale_b_01",
       clientReference: "B-001",
       productName: "Product B",
+      productPrice: { toString: () => "99" },
       status: "DECLINED",
       customerEmail: "private-b@example.com",
       customerPhone: "+447700900001",
@@ -152,6 +158,7 @@ function createMockPrisma() {
               id: session.sale.id,
               clientReference: session.sale.clientReference,
               productName: session.sale.productName,
+              productPrice: session.sale.productPrice,
               status: session.sale.status,
             },
             certificate: session.certificate,
@@ -229,11 +236,11 @@ assert.equal(findManyCall.take, 20);
 assert.equal(findManyCall.skip, 0);
 assert.equal(JSON.stringify(findManyCall.where).includes("org_a"), true);
 
+// customerEmail/customerPhone/customerAddress ARE intentionally selected --
+// the verifications list page displays them so staff can identify which
+// customer a pending verification belongs to (see dashboard/verifications/page.tsx).
 const selectString = JSON.stringify(findManyCall.select);
 assert.equal(selectString.includes("tokenHash"), false);
-assert.equal(selectString.includes("customerEmail"), false);
-assert.equal(selectString.includes("customerPhone"), false);
-assert.equal(selectString.includes("customerAddress"), false);
 assert.equal(selectString.includes("encryptedAccountNumber"), false);
 assert.equal(selectString.includes("apiKeyHash"), false);
 

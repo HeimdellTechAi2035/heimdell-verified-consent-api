@@ -25,8 +25,12 @@ function loadTsModule(path, mocks = {}) {
   return module.exports;
 }
 
+const saleEvidenceDisplay = loadTsModule("src/lib/sale-evidence-display.ts");
+
 const salesModule = loadTsModule("src/lib/dashboard-sales.ts", {
   "@/lib/db": { db: {} },
+  "@/lib/dashboard-performance": { nowMs: () => 0, logDashboardTiming: () => {} },
+  "@/lib/sale-evidence-display": saleEvidenceDisplay,
 });
 
 const orgAContext = {
@@ -61,7 +65,13 @@ const sales = [
     tokenHash: "must-not-return",
     encryptedAccountNumber: "must-not-return",
     verificationSessions: [
-      { status: index % 2 === 0 ? "PENDING" : "COMPLETED" },
+      {
+        status: index % 2 === 0 ? "PENDING" : "COMPLETED",
+        createdAt: new Date(baseDate.getTime() + index * 1000),
+        completedAt: index % 2 === 0 ? null : new Date(baseDate.getTime() + index * 3000),
+        declinedAt: null,
+        expiresAt: new Date(baseDate.getTime() + 7 * 24 * 60 * 60 * 1000),
+      },
     ],
   })),
   {
@@ -80,7 +90,15 @@ const sales = [
     apiKeyHash: "must-not-return",
     tokenHash: "must-not-return",
     encryptedAccountNumber: "must-not-return",
-    verificationSessions: [{ status: "DECLINED" }],
+    verificationSessions: [
+      {
+        status: "DECLINED",
+        createdAt: new Date("2026-05-26T12:00:00.000Z"),
+        completedAt: null,
+        declinedAt: new Date("2026-05-26T12:05:00.000Z"),
+        expiresAt: new Date("2026-06-02T12:00:00.000Z"),
+      },
+    ],
   },
 ];
 

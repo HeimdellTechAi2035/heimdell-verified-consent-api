@@ -35,7 +35,7 @@ for (const phrase of [
   "npm run setup:demo",
   "POST /api/v1/sales/intake",
   "/dashboard/certificates/[id]/pdf",
-  "npm run worker:webhooks -- --dry-run",
+  "npm run webhook:worker -- --dry-run",
   "POST /api/v1/embed-tokens",
   "x-api-key stays server-side only",
 ]) {

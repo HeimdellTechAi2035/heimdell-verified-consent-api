@@ -27,6 +27,7 @@ function loadTsModule(path, mocks = {}) {
 
 const certificatesModule = loadTsModule("src/lib/dashboard-certificates.ts", {
   "@/lib/db": { db: {} },
+  "@/lib/dashboard-performance": { nowMs: () => 0, logDashboardTiming: () => {} },
 });
 
 const orgAContext = {
@@ -67,12 +68,15 @@ const certificates = [
         id: `sale_a_${String(index + 1).padStart(2, "0")}`,
         clientReference: `A-${String(index + 1).padStart(3, "0")}`,
         productName: `Product A ${index + 1}`,
+        productPrice: { toString: () => String(20 + index) },
         status: "VERIFIED",
         customerEmail: `private-${index}@example.com`,
         customerPhone: "+447700900000",
         customerAddress: "Sensitive Address",
         encryptedAccountNumber: "must-not-return",
         apiKeyHash: "must-not-return",
+        client: { name: "Acme Telecom Ltd" },
+        submittedByUser: { name: "Seller One", email: "seller1@example.com" },
       },
     },
   })),
@@ -94,12 +98,15 @@ const certificates = [
         id: "sale_b_01",
         clientReference: "B-001",
         productName: "Product B",
+        productPrice: { toString: () => "99" },
         status: "VERIFIED",
         customerEmail: "private-b@example.com",
         customerPhone: "+447700900001",
         customerAddress: "Sensitive Address B",
         encryptedAccountNumber: "must-not-return",
         apiKeyHash: "must-not-return",
+        client: { name: "Beta Utilities Ltd" },
+        submittedByUser: { name: "Seller Two", email: "seller2@example.com" },
       },
     },
   },
@@ -184,7 +191,11 @@ function createMockPrisma() {
                 clientReference:
                   certificate.verificationSession.sale.clientReference,
                 productName: certificate.verificationSession.sale.productName,
+                productPrice: certificate.verificationSession.sale.productPrice,
                 status: certificate.verificationSession.sale.status,
+                client: certificate.verificationSession.sale.client,
+                submittedByUser:
+                  certificate.verificationSession.sale.submittedByUser,
               },
             },
           }));
@@ -242,12 +253,11 @@ assert.equal(findManyCall.take, 20);
 assert.equal(findManyCall.skip, 0);
 assert.equal(JSON.stringify(findManyCall.where).includes("org_a"), true);
 
+// customerEmail/customerPhone/customerAddress ARE intentionally selected --
+// the certificates list displays client/seller/customer identity fields.
 const selectString = JSON.stringify(findManyCall.select);
 assert.equal(selectString.includes("certificateJson"), false);
 assert.equal(selectString.includes("tokenHash"), false);
-assert.equal(selectString.includes("customerEmail"), false);
-assert.equal(selectString.includes("customerPhone"), false);
-assert.equal(selectString.includes("customerAddress"), false);
 assert.equal(selectString.includes("encryptedAccountNumber"), false);
 assert.equal(selectString.includes("apiKeyHash"), false);
 

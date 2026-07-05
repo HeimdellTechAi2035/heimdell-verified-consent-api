@@ -37,6 +37,7 @@ const apiKeys = loadTsModule("src/lib/dashboard-api-keys.ts", {
   "@/lib/crypto": {
     hashValue: async (value) => `hash:${value}`,
   },
+  "@/lib/dashboard-performance": { nowMs: () => 0, logDashboardTiming: () => {} },
 });
 
 assert.equal(policy.roleCanAccessDashboardSection("PLATFORM_ADMIN", "api-keys"), true);

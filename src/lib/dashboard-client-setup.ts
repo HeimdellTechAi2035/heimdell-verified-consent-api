@@ -151,6 +151,7 @@ export async function getPlatformClientSetupList(
       },
       clients: {
         select: {
+          id: true,
           webhookUrl: true,
         },
       },
@@ -161,29 +162,44 @@ export async function getPlatformClientSetupList(
     },
   });
 
-  const rows: PlatformClientListRow[] = await Promise.all(
-    organizations.map(async (organization) => {
-      const hardDeleteSafety = await getClientHardDeleteSafety(organization.id);
-
-      return {
-        organizationId: organization.id,
-        organizationName: organization.name,
-        slug: organization.slug,
-        status: organization.archivedAt ? "ARCHIVED" : "ACTIVE",
-        archivedAt: organization.archivedAt?.toISOString() ?? null,
-        createdAt: organization.createdAt.toISOString(),
-        membershipCount: organization._count.memberships,
-        clientCount: organization._count.clients,
-        activeApiKeyCount: organization.apiKeys.length,
-        webhookConfigured: organization.clients.some((client) =>
-          Boolean(client.webhookUrl)
-        ),
-        totalSales: hardDeleteSafety.counts.sales,
-        canHardDelete: hardDeleteSafety.canDelete,
-        hardDeleteBlockers: hardDeleteSafety.blockers,
-      };
-    })
+  const safetyByOrganization = await getClientHardDeleteSafetyBulk(
+    organizations.map((organization) => ({
+      organizationId: organization.id,
+      clientIds: organization.clients.map((client) => client.id),
+    }))
   );
+
+  const rows: PlatformClientListRow[] = organizations.map((organization) => {
+    const hardDeleteSafety = safetyByOrganization.get(organization.id) ?? {
+      canDelete: true,
+      blockers: [],
+      counts: {
+        sales: 0,
+        verificationSessions: 0,
+        certificates: 0,
+        webhookDeliveries: 0,
+        activeApiKeys: 0,
+      },
+    };
+
+    return {
+      organizationId: organization.id,
+      organizationName: organization.name,
+      slug: organization.slug,
+      status: organization.archivedAt ? "ARCHIVED" : "ACTIVE",
+      archivedAt: organization.archivedAt?.toISOString() ?? null,
+      createdAt: organization.createdAt.toISOString(),
+      membershipCount: organization._count.memberships,
+      clientCount: organization._count.clients,
+      activeApiKeyCount: organization.apiKeys.length,
+      webhookConfigured: organization.clients.some((client) =>
+        Boolean(client.webhookUrl)
+      ),
+      totalSales: hardDeleteSafety.counts.sales,
+      canHardDelete: hardDeleteSafety.canDelete,
+      hardDeleteBlockers: hardDeleteSafety.blockers,
+    };
+  });
 
   logDashboardTiming("clients.list", startedAt, {
     rows: rows.length,
@@ -333,19 +349,50 @@ export async function hardDeleteTestClientOrganization(params: {
   return { deleted: true, blockers: [] };
 }
 
-async function getClientHardDeleteSafety(
-  organizationId: string
-): Promise<{
+type HardDeleteSafetyCounts = {
+  sales: number;
+  verificationSessions: number;
+  certificates: number;
+  webhookDeliveries: number;
+  activeApiKeys: number;
+};
+
+type HardDeleteSafety = {
   canDelete: boolean;
   blockers: string[];
-  counts: {
-    sales: number;
-    verificationSessions: number;
-    certificates: number;
-    webhookDeliveries: number;
-    activeApiKeys: number;
-  };
-}> {
+  counts: HardDeleteSafetyCounts;
+};
+
+function buildHardDeleteSafety(counts: HardDeleteSafetyCounts): HardDeleteSafety {
+  const { sales, verificationSessions, certificates, webhookDeliveries, activeApiKeys } =
+    counts;
+
+  const blockers = [
+    sales > 0 ? `${sales} sale${sales === 1 ? "" : "s"}` : null,
+    verificationSessions > 0
+      ? `${verificationSessions} verification session${
+          verificationSessions === 1 ? "" : "s"
+        }`
+      : null,
+    certificates > 0
+      ? `${certificates} certificate${certificates === 1 ? "" : "s"}`
+      : null,
+    webhookDeliveries > 0
+      ? `${webhookDeliveries} webhook deliver${
+          webhookDeliveries === 1 ? "y" : "ies"
+        }`
+      : null,
+    activeApiKeys > 0
+      ? `${activeApiKeys} active API key${activeApiKeys === 1 ? "" : "s"}`
+      : null,
+  ].filter((blocker): blocker is string => Boolean(blocker));
+
+  return { canDelete: blockers.length === 0, blockers, counts };
+}
+
+async function getClientHardDeleteSafety(
+  organizationId: string
+): Promise<HardDeleteSafety> {
   const clientWhere = { client: { organizationId } };
   const verificationWhere = { sale: clientWhere };
   const certificateWhere = { verificationSession: { sale: clientWhere } };
@@ -368,37 +415,140 @@ async function getClientHardDeleteSafety(
     db.apiKey.count({ where: { organizationId, status: "ACTIVE" } }),
   ]);
 
-  const blockers = [
-    sales > 0 ? `${sales} sale${sales === 1 ? "" : "s"}` : null,
-    verificationSessions > 0
-      ? `${verificationSessions} verification session${
-          verificationSessions === 1 ? "" : "s"
-        }`
-      : null,
-    certificates > 0
-      ? `${certificates} certificate${certificates === 1 ? "" : "s"}`
-      : null,
-    webhookDeliveries > 0
-      ? `${webhookDeliveries} webhook deliver${
-          webhookDeliveries === 1 ? "y" : "ies"
-        }`
-      : null,
-    activeApiKeys > 0
-      ? `${activeApiKeys} active API key${activeApiKeys === 1 ? "" : "s"}`
-      : null,
-  ].filter((blocker): blocker is string => Boolean(blocker));
+  return buildHardDeleteSafety({
+    sales,
+    verificationSessions,
+    certificates,
+    webhookDeliveries,
+    activeApiKeys,
+  });
+}
 
-  return {
-    canDelete: blockers.length === 0,
-    blockers,
-    counts: {
-      sales,
-      verificationSessions,
-      certificates,
-      webhookDeliveries,
-      activeApiKeys,
-    },
-  };
+/**
+ * Bulk equivalent of getClientHardDeleteSafety for list pages -- computes
+ * safety for every organization with a fixed number of queries instead of
+ * 5 queries per organization (was O(orgs), now O(1)).
+ */
+async function getClientHardDeleteSafetyBulk(
+  organizationClients: { organizationId: string; clientIds: string[] }[]
+): Promise<Map<string, HardDeleteSafety>> {
+  const allClientIds = organizationClients.flatMap((entry) => entry.clientIds);
+  const organizationIds = organizationClients.map((entry) => entry.organizationId);
+
+  const clientIdToOrganizationId = new Map<string, string>();
+  for (const entry of organizationClients) {
+    for (const clientId of entry.clientIds) {
+      clientIdToOrganizationId.set(clientId, entry.organizationId);
+    }
+  }
+
+  const [sales, activeApiKeyGroups] = await Promise.all([
+    allClientIds.length > 0
+      ? db.sale.findMany({
+          where: { clientId: { in: allClientIds } },
+          select: { id: true, clientId: true },
+        })
+      : [],
+    organizationIds.length > 0
+      ? db.apiKey.groupBy({
+          by: ["organizationId"],
+          where: { organizationId: { in: organizationIds }, status: "ACTIVE" },
+          _count: { _all: true },
+        })
+      : [],
+  ]);
+
+  const saleIdToClientId = new Map(sales.map((sale) => [sale.id, sale.clientId]));
+  const allSaleIds = sales.map((sale) => sale.id);
+
+  const [verificationSessions, notifications] = await Promise.all([
+    allSaleIds.length > 0
+      ? db.verificationSession.findMany({
+          where: { saleId: { in: allSaleIds } },
+          select: { id: true, saleId: true },
+        })
+      : [],
+    allSaleIds.length > 0
+      ? db.notification.findMany({
+          where: { channel: "WEBHOOK", saleId: { in: allSaleIds } },
+          select: { saleId: true },
+        })
+      : [],
+  ]);
+
+  const verificationSessionIdToSaleId = new Map(
+    verificationSessions.map((session) => [session.id, session.saleId])
+  );
+  const allVerificationSessionIds = verificationSessions.map((session) => session.id);
+
+  const certificates =
+    allVerificationSessionIds.length > 0
+      ? await db.certificate.findMany({
+          where: { verificationSessionId: { in: allVerificationSessionIds } },
+          select: { verificationSessionId: true },
+        })
+      : [];
+
+  const salesByOrganization = new Map<string, number>();
+  for (const sale of sales) {
+    const organizationId = clientIdToOrganizationId.get(sale.clientId);
+    if (!organizationId) continue;
+    salesByOrganization.set(organizationId, (salesByOrganization.get(organizationId) ?? 0) + 1);
+  }
+
+  const verificationSessionsByOrganization = new Map<string, number>();
+  for (const session of verificationSessions) {
+    const clientId = saleIdToClientId.get(session.saleId);
+    const organizationId = clientId ? clientIdToOrganizationId.get(clientId) : undefined;
+    if (!organizationId) continue;
+    verificationSessionsByOrganization.set(
+      organizationId,
+      (verificationSessionsByOrganization.get(organizationId) ?? 0) + 1
+    );
+  }
+
+  const certificatesByOrganization = new Map<string, number>();
+  for (const certificate of certificates) {
+    const saleId = verificationSessionIdToSaleId.get(certificate.verificationSessionId);
+    const clientId = saleId ? saleIdToClientId.get(saleId) : undefined;
+    const organizationId = clientId ? clientIdToOrganizationId.get(clientId) : undefined;
+    if (!organizationId) continue;
+    certificatesByOrganization.set(
+      organizationId,
+      (certificatesByOrganization.get(organizationId) ?? 0) + 1
+    );
+  }
+
+  const notificationsByOrganization = new Map<string, number>();
+  for (const notification of notifications) {
+    const clientId = saleIdToClientId.get(notification.saleId);
+    const organizationId = clientId ? clientIdToOrganizationId.get(clientId) : undefined;
+    if (!organizationId) continue;
+    notificationsByOrganization.set(
+      organizationId,
+      (notificationsByOrganization.get(organizationId) ?? 0) + 1
+    );
+  }
+
+  const activeApiKeysByOrganization = new Map(
+    activeApiKeyGroups.map((group) => [group.organizationId, group._count._all])
+  );
+
+  const result = new Map<string, HardDeleteSafety>();
+  for (const { organizationId } of organizationClients) {
+    result.set(
+      organizationId,
+      buildHardDeleteSafety({
+        sales: salesByOrganization.get(organizationId) ?? 0,
+        verificationSessions: verificationSessionsByOrganization.get(organizationId) ?? 0,
+        certificates: certificatesByOrganization.get(organizationId) ?? 0,
+        webhookDeliveries: notificationsByOrganization.get(organizationId) ?? 0,
+        activeApiKeys: activeApiKeysByOrganization.get(organizationId) ?? 0,
+      })
+    );
+  }
+
+  return result;
 }
 
 async function assertNotCurrentOrganization(

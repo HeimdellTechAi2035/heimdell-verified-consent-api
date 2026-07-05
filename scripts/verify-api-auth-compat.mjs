@@ -53,7 +53,9 @@ function createMockPrisma() {
         organizationId: "org_a",
         webhookUrl: "https://example.com/webhook",
         webhookSecret: "secret",
+        organization: { archivedAt: null },
       },
+      organization: { archivedAt: null },
     },
     {
       id: "api_key_org",
@@ -64,6 +66,7 @@ function createMockPrisma() {
       status: "ACTIVE",
       expiresAt: null,
       client: null,
+      organization: { archivedAt: null },
     },
     {
       id: "api_key_cross_org_client",
@@ -78,7 +81,9 @@ function createMockPrisma() {
         organizationId: "org_b",
         webhookUrl: null,
         webhookSecret: null,
+        organization: { archivedAt: null },
       },
+      organization: { archivedAt: null },
     },
     {
       id: "api_key_revoked",
@@ -93,7 +98,9 @@ function createMockPrisma() {
         organizationId: "org_a",
         webhookUrl: null,
         webhookSecret: null,
+        organization: { archivedAt: null },
       },
+      organization: { archivedAt: null },
     },
     {
       id: "api_key_expired",
@@ -108,7 +115,9 @@ function createMockPrisma() {
         organizationId: "org_a",
         webhookUrl: null,
         webhookSecret: null,
+        organization: { archivedAt: null },
       },
+      organization: { archivedAt: null },
     },
   ];
   const clients = [
@@ -118,6 +127,7 @@ function createMockPrisma() {
       apiKeyHash: "raw-legacy-key",
       webhookUrl: null,
       webhookSecret: null,
+      organization: { archivedAt: null },
     },
   ];
 
@@ -140,7 +150,8 @@ function createMockPrisma() {
     client: {
       async findMany(args) {
         calls.push(["client.findMany", args]);
-        assert.deepEqual(args.where, { status: "ACTIVE" });
+        assert.equal(args.where.status, "ACTIVE");
+        assert.ok(Array.isArray(args.where.OR));
         return clients;
       },
     },

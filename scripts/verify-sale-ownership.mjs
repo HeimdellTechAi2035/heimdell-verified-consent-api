@@ -97,7 +97,7 @@ assert.match(intakeSource, /submittedByUserId/);
 assert.match(intakeSource, /errors\.badRequest\(\s*"seller_email is not valid for this organization"/);
 
 const resolveIndex = intakeSource.indexOf("resolveSubmittedByUserId");
-const createIndex = intakeSource.indexOf("db.sale.create");
+const createIndex = intakeSource.indexOf(".sale.create");
 assert.ok(resolveIndex > -1 && createIndex > -1 && resolveIndex < createIndex);
 
 const mySalesSource = readFileSync("src/app/dashboard/my-sales/page.tsx", "utf8");
@@ -109,6 +109,8 @@ assert.doesNotMatch(mySalesSource, /tokenHash/);
 assert.doesNotMatch(mySalesSource, /apiKeyHash/);
 assert.doesNotMatch(mySalesSource, /certificateJson/);
 assert.doesNotMatch(mySalesSource, /encryptedAccountNumber/);
-assert.doesNotMatch(mySalesSource, /\/dashboard\/certificates\/\$\{/);
+// Sellers can now open the certificate for their own completed sale (see
+// CERTIFICATE_VIEW_ROLES including SELLER) -- this link is intentional.
+assert.match(mySalesSource, /\/dashboard\/certificates\/\$\{/);
 
 console.log("Sale ownership verification passed.");

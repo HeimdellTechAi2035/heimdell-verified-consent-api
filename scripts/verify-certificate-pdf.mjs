@@ -27,11 +27,18 @@ function loadTsModule(path, mocks = {}) {
 
 const certificatesModule = loadTsModule("src/lib/dashboard-certificates.ts", {
   "@/lib/db": { db: {} },
+  "@/lib/dashboard-performance": { nowMs: () => 0, logDashboardTiming: () => {} },
 });
+const clientPolicyModule = loadTsModule("src/lib/client-policy.ts", {
+  "@/lib/db": { db: {} },
+});
+const saleEvidenceDisplay = loadTsModule("src/lib/sale-evidence-display.ts");
 const detailModule = loadTsModule("src/lib/dashboard-certificate-detail.ts", {
   "@/lib/db": { db: {} },
   "@/lib/dashboard-auth": {},
   "@/lib/dashboard-certificates": certificatesModule,
+  "@/lib/client-policy": clientPolicyModule,
+  "@/lib/sale-evidence-display": saleEvidenceDisplay,
 });
 const pdfModule = loadTsModule("src/lib/certificate-pdf.ts", {
   "@/lib/dashboard-certificate-detail": detailModule,
@@ -55,6 +62,13 @@ const detail = {
     termsSummary: "Terms shown to customer",
     policiesSummary: "Policies shown to customer",
     coolingOffSummary: "14 day cooling-off period",
+    clientCompanyName: "Acme Telecom Ltd",
+    sellerName: "Seller One",
+    sellerEmail: "seller1@example.com",
+    customerName: "Jane Customer",
+    customerPhone: "+447700900000",
+    customerEmail: "private@example.com",
+    customerAddress: "1 Example Street",
   },
   verification: {
     sessionId: "session_a",
@@ -78,18 +92,28 @@ const detail = {
     { type: "VERIFICATION_COMPLETED", at: "2026-05-26T10:15:00.000Z" },
     { type: "Certificate created", at: "2026-05-26T10:20:00.000Z" },
   ],
+  policy: {
+    termsAndConditions: "Terms and conditions text",
+    coolingOffPolicy: "14 day cooling-off period",
+    cancellationInstructions: "How to cancel",
+    privacyEvidenceWording: "Privacy and evidence wording",
+    directDebitGuaranteeWording: "Direct Debit Guarantee wording",
+    policyVersion: "v1",
+    capturedAt: "2026-05-26T10:00:00.000Z",
+    isLegacyFallback: false,
+  },
 };
 
 const lines = pdfModule.buildCertificatePdfLines(detail);
 const text = lines.join("\n");
 
 assert.equal(text.includes("Heimdell Verified Consent"), true);
-assert.equal(text.includes("Protected Certificate Evidence Summary"), true);
-assert.equal(text.includes("Certificate ID: cert_a"), true);
-assert.equal(text.includes(`Full proof hash: ${proofHash}`), true);
+assert.equal(text.includes("Certificate evidence record"), true);
+assert.equal(text.includes("Certificate reference: cert_a"), true);
+assert.equal(text.includes(`Proof hash: ${proofHash}`), true);
 assert.equal(text.includes("Account ending 6789"), true);
 assert.equal(text.includes("**-**-56"), true);
-assert.equal(text.includes("not legal advice"), true);
+assert.equal(text.includes("audit and dispute resolution"), true);
 
 for (const sensitive of [
   "tokenHash",
@@ -154,7 +178,7 @@ assert.equal(
 );
 assert.equal(
   rolePolicy.roleCanAccessDashboardSection("SELLER", "certificates"),
-  false
+  true
 );
 
 const routeSource = readFileSync(

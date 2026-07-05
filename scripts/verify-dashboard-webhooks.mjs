@@ -30,6 +30,7 @@ const webhooksModule = loadTsModule("src/lib/dashboard-webhooks.ts", {
   "@/lib/db": { db: {} },
   "@/lib/dashboard-auth": {},
   "@/lib/dashboard-role-policy": rolePolicy,
+  "@/lib/dashboard-performance": { nowMs: () => 0, logDashboardTiming: () => {} },
 });
 
 const orgAContext = {

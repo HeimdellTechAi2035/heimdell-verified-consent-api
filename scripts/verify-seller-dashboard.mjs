@@ -40,7 +40,6 @@ const sellerBlockedSections = [
   "overview",
   "sales",
   "verifications",
-  "certificates",
   "staff",
   "clients",
   "api-keys",
