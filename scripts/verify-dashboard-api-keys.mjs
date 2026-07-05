@@ -31,6 +31,9 @@ const apiKeysModule = loadTsModule("src/lib/dashboard-api-keys.ts", {
     async hashValue(value) {
       return `bcrypt:${value.slice(0, 8)}`;
     },
+    hashToken(value) {
+      return `lookup:${value}`;
+    },
   },
   "@/lib/dashboard-performance": {
     nowMs: () => 0,

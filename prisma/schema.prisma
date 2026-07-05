@@ -214,6 +214,12 @@ model Client {
   /// Compatibility field for the existing v1 API auth path.
   /// New dashboard-managed keys should use ApiKey once a migration plan is agreed.
   apiKeyHash    String       @unique
+  /// SHA-256 hex digest of the raw API key, for O(1) auth lookup instead of
+  /// a linear bcrypt scan over every row. Nullable because rows created
+  /// before this column existed only ever stored the raw key's bcrypt hash
+  /// (bcrypt is salted/non-deterministic, so it cannot be backfilled) --
+  /// those rows fall back to the slower scan in authenticateApiKey.
+  lookupHash    String?      @unique
   webhookUrl    String?
   webhookSecret String?
   status        ClientStatus @default(ACTIVE)
@@ -237,6 +243,9 @@ model ApiKey {
   name            String
   keyPrefix       String
   apiKeyHash      String       @unique
+  /// SHA-256 hex digest of the raw API key, for O(1) auth lookup. See
+  /// Client.lookupHash for why this is nullable and how the fallback works.
+  lookupHash      String?      @unique
   status          ApiKeyStatus @default(ACTIVE)
   createdByUserId String?
   createdByUser   User?        @relation("ApiKeyCreatedBy", fields: [createdByUserId], references: [id])

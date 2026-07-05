@@ -36,6 +36,7 @@ const apiKeys = loadTsModule("src/lib/dashboard-api-keys.ts", {
   },
   "@/lib/crypto": {
     hashValue: async (value) => `hash:${value}`,
+    hashToken: (value) => `lookup:${value}`,
   },
   "@/lib/dashboard-performance": { nowMs: () => 0, logDashboardTiming: () => {} },
 });

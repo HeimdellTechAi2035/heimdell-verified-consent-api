@@ -1,5 +1,7 @@
 #!/usr/bin/env node
-// Verifies v1 x-api-key auth supports ApiKey first and legacy Client.apiKeyHash fallback.
+// Verifies v1 x-api-key auth: fast lookupHash path first, then a bounded
+// scan for legacy rows (ApiKey and Client) that predate the lookupHash
+// column and only ever stored a bcrypt hash.
 
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
@@ -31,6 +33,11 @@ const authModule = loadTsModule("src/lib/auth.ts", {
     async compareHash(value, hash) {
       return value === hash;
     },
+    // Identity stand-in for the real SHA-256 hash -- fixtures below set
+    // lookupHash equal to the raw key literal to match.
+    hashToken(value) {
+      return value;
+    },
   },
 });
 
@@ -46,6 +53,7 @@ function createMockPrisma() {
       clientId: "client_a",
       name: "Client key",
       apiKeyHash: "raw-new-client-key",
+      lookupHash: "raw-new-client-key",
       status: "ACTIVE",
       expiresAt: new Date(now + 60_000),
       client: {
@@ -63,6 +71,7 @@ function createMockPrisma() {
       clientId: null,
       name: "Org key",
       apiKeyHash: "raw-org-key",
+      lookupHash: "raw-org-key",
       status: "ACTIVE",
       expiresAt: null,
       client: null,
@@ -74,6 +83,7 @@ function createMockPrisma() {
       clientId: "client_b",
       name: "Bad key",
       apiKeyHash: "raw-cross-org-key",
+      lookupHash: "raw-cross-org-key",
       status: "ACTIVE",
       expiresAt: null,
       client: {
@@ -91,6 +101,7 @@ function createMockPrisma() {
       clientId: "client_a",
       name: "Revoked key",
       apiKeyHash: "raw-revoked-key",
+      lookupHash: "raw-revoked-key",
       status: "REVOKED",
       expiresAt: null,
       client: {
@@ -108,6 +119,7 @@ function createMockPrisma() {
       clientId: "client_a",
       name: "Expired key",
       apiKeyHash: "raw-expired-key",
+      lookupHash: "raw-expired-key",
       status: "ACTIVE",
       expiresAt: new Date(now - 60_000),
       client: {
@@ -119,12 +131,41 @@ function createMockPrisma() {
       },
       organization: { archivedAt: null },
     },
+    {
+      // Simulates a key created before the lookupHash migration -- must
+      // still authenticate via the bounded legacy scan.
+      id: "api_key_pre_migration",
+      organizationId: "org_a",
+      clientId: null,
+      name: "Pre-migration key",
+      apiKeyHash: "raw-pre-migration-key",
+      lookupHash: null,
+      status: "ACTIVE",
+      expiresAt: null,
+      client: null,
+      organization: { archivedAt: null },
+    },
   ];
   const clients = [
     {
+      // Simulates a legacy Client row from before the lookupHash migration.
       id: "legacy_client",
       organizationId: "org_legacy",
       apiKeyHash: "raw-legacy-key",
+      lookupHash: null,
+      status: "ACTIVE",
+      webhookUrl: null,
+      webhookSecret: null,
+      organization: { archivedAt: null },
+    },
+    {
+      // A newer legacy-style Client row that DOES have a lookupHash (e.g. a
+      // freshly-provisioned placeholder row).
+      id: "fast_legacy_client",
+      organizationId: "org_fast_legacy",
+      apiKeyHash: "raw-fast-legacy-key",
+      lookupHash: "raw-fast-legacy-key",
+      status: "ACTIVE",
       webhookUrl: null,
       webhookSecret: null,
       organization: { archivedAt: null },
@@ -135,11 +176,16 @@ function createMockPrisma() {
     calls,
     updates,
     apiKey: {
+      async findUnique(args) {
+        calls.push(["apiKey.findUnique", args]);
+        return apiKeys.find((key) => key.lookupHash === args.where.lookupHash) ?? null;
+      },
       async findMany(args) {
         calls.push(["apiKey.findMany", args]);
+        assert.equal(args.where.lookupHash, null);
         assert.equal(JSON.stringify(args.where).includes("ACTIVE"), true);
         assert.equal(JSON.stringify(args.where).includes("expiresAt"), true);
-        return apiKeys;
+        return apiKeys.filter((key) => key.lookupHash === null);
       },
       async update(args) {
         calls.push(["apiKey.update", args]);
@@ -148,11 +194,16 @@ function createMockPrisma() {
       },
     },
     client: {
+      async findUnique(args) {
+        calls.push(["client.findUnique", args]);
+        return clients.find((client) => client.lookupHash === args.where.lookupHash) ?? null;
+      },
       async findMany(args) {
         calls.push(["client.findMany", args]);
+        assert.equal(args.where.lookupHash, null);
         assert.equal(args.where.status, "ACTIVE");
         assert.ok(Array.isArray(args.where.OR));
-        return clients;
+        return clients.filter((client) => client.lookupHash === null);
       },
     },
   };
@@ -173,6 +224,11 @@ assert.equal(newAuth.client.id, "client_a");
 assert.equal(prismaNew.updates.length, 1);
 assert.equal(prismaNew.updates[0].where.id, "api_key_active_client");
 assert.ok(prismaNew.updates[0].data.lastUsedAt instanceof Date);
+// The fast path found a match, so the legacy scan must never have run.
+assert.equal(
+  prismaNew.calls.some(([name]) => name === "apiKey.findMany"),
+  false
+);
 
 const serializedNew = JSON.stringify(newAuth);
 assert.equal(serializedNew.includes("apiKeyHash"), false);
@@ -195,6 +251,40 @@ assert.equal(legacyAuth.organizationId, "org_legacy");
 assert.equal(legacyAuth.clientId, "legacy_client");
 assert.equal(legacyAuth.apiKeyId, null);
 assert.equal(legacyAuth.client.id, "legacy_client");
+// A pre-migration key has no lookupHash, so both fast paths must have been
+// tried and missed before falling back to the legacy scans.
+assert.equal(
+  prismaLegacy.calls.some(([name]) => name === "apiKey.findMany"),
+  true
+);
+assert.equal(
+  prismaLegacy.calls.some(([name]) => name === "client.findMany"),
+  true
+);
+
+const prismaPreMigration = createMockPrisma();
+const preMigrationAuth = await authModule.authenticateApiKey(
+  "raw-pre-migration-key",
+  prismaPreMigration
+);
+assert.equal(preMigrationAuth.mode, "api_key");
+assert.equal(preMigrationAuth.organizationId, "org_a");
+assert.equal(preMigrationAuth.apiKeyId, "api_key_pre_migration");
+
+const prismaFastLegacy = createMockPrisma();
+const fastLegacyAuth = await authModule.authenticateApiKey(
+  "raw-fast-legacy-key",
+  prismaFastLegacy
+);
+assert.equal(fastLegacyAuth.mode, "legacy_client_key");
+assert.equal(fastLegacyAuth.organizationId, "org_fast_legacy");
+assert.equal(fastLegacyAuth.clientId, "fast_legacy_client");
+// Found via the fast client.findUnique lookup -- the legacy client scan
+// must never have run.
+assert.equal(
+  prismaFastLegacy.calls.some(([name]) => name === "client.findMany"),
+  false
+);
 
 const legacyClient = await authModule.findClientByApiKey(
   "raw-legacy-key",

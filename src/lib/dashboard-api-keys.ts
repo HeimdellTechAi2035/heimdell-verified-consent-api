@@ -1,7 +1,7 @@
 import type { ApiKeyStatus, Prisma, Role } from "@prisma/client";
 import { randomBytes } from "crypto";
 import { db } from "@/lib/db";
-import { hashValue } from "@/lib/crypto";
+import { hashValue, hashToken } from "@/lib/crypto";
 import type { OrganizationContext } from "@/lib/dashboard-auth";
 import { logDashboardTiming, nowMs } from "@/lib/dashboard-performance";
 
@@ -292,6 +292,10 @@ export async function createDashboardApiKey(params: {
 
   const rawKey = generateDashboardApiKey();
   const apiKeyHash = await hashValue(rawKey);
+  // SHA-256 lookup hash for O(1) auth lookup -- safe because the raw key is
+  // a high-entropy random value (same rationale as hashToken's use for
+  // verification session tokens), not a guessable secret like a password.
+  const lookupHash = hashToken(rawKey);
   const keyPrefix = createApiKeyPrefix(rawKey);
   const expiresAt = params.expiresAt ? new Date(params.expiresAt) : null;
 
@@ -306,6 +310,7 @@ export async function createDashboardApiKey(params: {
       name,
       keyPrefix,
       apiKeyHash,
+      lookupHash,
       status: "ACTIVE",
       createdByUserId: params.context.user.id,
       expiresAt,

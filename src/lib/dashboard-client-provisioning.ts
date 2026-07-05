@@ -1,7 +1,7 @@
 import type { Role } from "@prisma/client";
 import { randomBytes } from "crypto";
 import { db } from "@/lib/db";
-import { hashValue } from "@/lib/crypto";
+import { hashValue, hashToken } from "@/lib/crypto";
 import { createSupabaseAdminClient } from "@/lib/supabase-admin";
 import { generateTemporaryStaffPassword } from "@/lib/dashboard-staff";
 import { sendEmailNotification } from "@/lib/notification-providers";
@@ -219,14 +219,14 @@ async function createProvisioningRecords(params: {
           select: { id: true },
         });
 
-    const placeholderApiKeyHash = await hashValue(
-      generateLegacyClientPlaceholderSecret()
-    );
+    const placeholderSecret = generateLegacyClientPlaceholderSecret();
+    const placeholderApiKeyHash = await hashValue(placeholderSecret);
     const client = await tx.client.create({
       data: {
         organizationId: organization.id,
         name: `${input.organizationName} Client`,
         apiKeyHash: placeholderApiKeyHash,
+        lookupHash: hashToken(placeholderSecret),
         status: "ACTIVE",
       },
       select: { id: true },

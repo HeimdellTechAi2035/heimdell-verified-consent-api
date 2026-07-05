@@ -53,6 +53,7 @@ const provisioning = loadTsModule("src/lib/dashboard-client-provisioning.ts", {
   },
   "@/lib/crypto": {
     hashValue: async (value) => `hash:${value}`,
+    hashToken: (value) => `lookup:${value}`,
   },
   ...PROVISIONING_EXTRA_MOCKS,
 });
@@ -62,6 +63,7 @@ function loadProvisioningWithDb(db) {
     "@/lib/db": { db },
     "@/lib/crypto": {
       hashValue: async (value) => `hash:${value}`,
+      hashToken: (value) => `lookup:${value}`,
     },
     ...PROVISIONING_EXTRA_MOCKS,
   });
