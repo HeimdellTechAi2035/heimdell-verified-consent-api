@@ -4,16 +4,50 @@ import {
   buildContentSecurityPolicy,
   buildPermissionsPolicy,
 } from "@/lib/security-headers";
+import type { PwaAppKey } from "@/lib/pwa-identity";
+
+// Vanity subdomains (e.g. admin.telecomcompliance.uk) that should land
+// visitors straight on the matching branded login page instead of the
+// marketing homepage. This is presentation only -- actual dashboard access
+// stays gated by role via the existing server-side auth checks, not by
+// which subdomain was used to get there.
+const SUBDOMAIN_TO_PWA_APP_KEY: Record<string, PwaAppKey> = {
+  admin: "company",
+  client: "client",
+  seller: "seller",
+};
+
+function resolveSubdomainAppKey(host: string): PwaAppKey | null {
+  const hostname = host.split(":")[0].toLowerCase();
+  const label = hostname.split(".")[0];
+  return SUBDOMAIN_TO_PWA_APP_KEY[label] ?? null;
+}
+
+function buildResponse(
+  req: NextRequest,
+  requestHeaders: Headers,
+  rewriteToPathname: string | null
+): NextResponse {
+  if (rewriteToPathname) {
+    const url = req.nextUrl.clone();
+    url.pathname = rewriteToPathname;
+    return NextResponse.rewrite(url, { request: { headers: requestHeaders } });
+  }
+
+  return NextResponse.next({ request: { headers: requestHeaders } });
+}
 
 export async function middleware(req: NextRequest) {
   const requestHeaders = new Headers(req.headers);
   requestHeaders.set("x-heimdell-pathname", req.nextUrl.pathname);
 
-  let response = NextResponse.next({
-    request: {
-      headers: requestHeaders,
-    },
-  });
+  const subdomainAppKey = resolveSubdomainAppKey(req.headers.get("host") ?? "");
+  const isSubdomainEntryPath =
+    req.nextUrl.pathname === "/" || req.nextUrl.pathname === "/login";
+  const rewriteToPathname =
+    subdomainAppKey && isSubdomainEntryPath ? `/login/${subdomainAppKey}` : null;
+
+  let response = buildResponse(req, requestHeaders, rewriteToPathname);
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -26,11 +60,7 @@ export async function middleware(req: NextRequest) {
         },
         setAll(cookiesToSet) {
           cookiesToSet.forEach(({ name, value }) => req.cookies.set(name, value));
-          response = NextResponse.next({
-            request: {
-              headers: requestHeaders,
-            },
-          });
+          response = buildResponse(req, requestHeaders, rewriteToPathname);
           cookiesToSet.forEach(({ name, value, options }) => {
             response.cookies.set(name, value, options);
           });
