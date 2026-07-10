@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    env:
+      # Dummy values -- just need to be syntactically valid for Prisma's
+      # schema validation and the crypto helpers' format checks. Nothing
+      # here connects to a real database or provider; the full test suite
+      # runs against mocked Prisma clients, not a live connection.
+      DATABASE_URL: "postgresql://user:pass@localhost:5432/db"
+      DIRECT_URL: "postgresql://user:pass@localhost:5432/db"
+      ENCRYPTION_KEY: "Z4wX4EEkcGCYSQ41IoXRy2ncH1bclpmI125I26EXvFQ="
+      EMBED_TOKEN_SECRET: "ci-placeholder-secret-at-least-32-characters-long"
+      APP_URL: "https://telecomcompliance.uk"
+      NEXT_PUBLIC_SUPABASE_URL: "https://placeholder.supabase.co"
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: "placeholder-anon-key"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Type-check
+        run: npx tsc --noEmit
+
+      - name: Lint
+        run: npx next lint
+
+      - name: Run verification test suite
+        run: npm run test:all
+
+      - name: Build
+        run: npm run build

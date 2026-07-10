@@ -58,7 +58,8 @@
     "test:webhook-delivery": "node scripts/verify-webhook-delivery.mjs",
     "test:webhook-live-proof": "node scripts/verify-webhook-live-proof.mjs",
     "test:rate-limit": "node scripts/verify-rate-limit.mjs",
-    "test:health": "curl http://localhost:3000/api/health"
+    "test:health": "curl http://localhost:3000/api/health",
+    "test:all": "node scripts/run-all-verify-tests.mjs"
   },
   "dependencies": {
     "@opentelemetry/api": "^1.9.1",

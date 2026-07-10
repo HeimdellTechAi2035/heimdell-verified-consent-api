@@ -1,0 +1,28 @@
+name: Uptime check
+
+on:
+  schedule:
+    # Every 15 minutes. GitHub Actions cron timing isn't exact under load,
+    # so treat this as "checked at least every ~15-20 minutes", not a
+    # precise SLA.
+    - cron: "*/15 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check production is up and can reach the database
+        run: |
+          response=$(curl -s -o /tmp/health-response.json -w "%{http_code}" https://telecomcompliance.uk/api/health/deep)
+          echo "HTTP status: $response"
+          cat /tmp/health-response.json
+          echo ""
+          if [ "$response" != "200" ]; then
+            echo "::error::Production health check failed with HTTP $response"
+            exit 1
+          fi
+          if ! grep -q '"ok":true' /tmp/health-response.json; then
+            echo "::error::Production health check returned ok:false"
+            exit 1
+          fi
