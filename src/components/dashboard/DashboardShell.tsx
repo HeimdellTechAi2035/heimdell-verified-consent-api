@@ -7,7 +7,7 @@ import { LegalFooter } from "@/components/LegalFooter";
 import type { OrganizationContext } from "@/lib/dashboard-auth";
 import { InstallPrompt } from "@/components/pwa/InstallPrompt";
 import { getPwaAppKeyForRole } from "@/lib/pwa-identity";
-import { CLIENT_OWNER_AND_PLATFORM_ROLES } from "@/lib/dashboard-role-policy";
+import { CLIENT_OWNER_AND_PLATFORM_ROLES, isPlatformDashboardRole } from "@/lib/dashboard-role-policy";
 import { getOrganizationCreditBalance } from "@/lib/dashboard-credits";
 import { DashboardSidebar, DashboardTabletNav } from "./DashboardSidebar";
 
@@ -32,6 +32,19 @@ async function CreditBalanceBadge({ context }: { context: OrganizationContext })
     >
       {balance} credits
     </Link>
+  );
+}
+
+/// Deliberately no dismiss/close control -- this must keep showing on every
+/// admin dashboard page load until the underlying Supabase plan actually has
+/// automated backups, not just until someone closes it once. Platform-tier
+/// roles only (see DISASTER_RECOVERY.md for the full detail).
+function NoBackupWarningBanner() {
+  return (
+    <div className="bg-red-600 px-4 py-2.5 text-center text-xs font-semibold text-white sm:px-6 lg:px-8">
+      ⚠️ No automated database backups are enabled (Supabase Free tier). If the database is lost
+      right now, it cannot be restored. See DISASTER_RECOVERY.md.
+    </div>
   );
 }
 
@@ -75,6 +88,10 @@ export async function DashboardShell({
             </a>
           </div>
         </header>
+
+        {context && isPlatformDashboardRole(context.membership.role) && (
+          <NoBackupWarningBanner />
+        )}
 
         <DashboardTabletNav role={context?.membership.role} />
 
