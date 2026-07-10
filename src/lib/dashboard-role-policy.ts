@@ -70,6 +70,27 @@ export const STAFF_MANAGER_ROLES = [
   "ADMIN",
 ] as const satisfies readonly Role[];
 
+/// Roles that can see a credit balance -- includes SELLER (read-only: they
+/// need to know if their organization is about to run out) on top of
+/// everyone in CLIENT_OWNER_AND_PLATFORM_ROLES. Whether the *purchase* UI
+/// itself is shown is a separate, page-level decision (see
+/// CREDIT_PURCHASE_ROLES) -- platform-tier roles can view but never buy
+/// credits for themselves, since credits are a client billing concept, not
+/// something Heimdell buys from itself.
+export const CREDIT_VIEW_ROLES = [
+  ...CLIENT_OWNER_AND_PLATFORM_ROLES,
+  "SELLER",
+] as const satisfies readonly Role[];
+
+/// Roles that can actually buy credits -- client-tier billing roles only.
+/// Platform-tier roles (PLATFORM_ADMIN, OWNER) can view the credits page
+/// but never see the purchase flow, and SELLER never does either.
+export const CREDIT_PURCHASE_ROLES = [
+  "CLIENT_OWNER",
+  "CLIENT_MANAGER",
+  "ADMIN",
+] as const satisfies readonly Role[];
+
 export const DASHBOARD_SECTION_ROLES = {
   overview: [
     "PLATFORM_ADMIN",
@@ -91,7 +112,7 @@ export const DASHBOARD_SECTION_ROLES = {
   settings: CLIENT_OWNER_AND_PLATFORM_ROLES,
   integrations: PLATFORM_ADMIN_ROLES,
   notifications: CLIENT_OWNER_AND_PLATFORM_ROLES,
-  credits: CLIENT_OWNER_AND_PLATFORM_ROLES,
+  credits: CREDIT_VIEW_ROLES,
   signups: PLATFORM_ADMIN_ROLES,
 } as const satisfies Record<DashboardSection, readonly Role[]>;
 

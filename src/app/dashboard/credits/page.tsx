@@ -7,6 +7,7 @@ import { DashboardRoleGate } from "@/components/dashboard/DashboardRoleGate";
 import { DataTable, type DataTableColumn } from "@/components/dashboard/DataTable";
 import { BuyCreditsForm } from "@/components/dashboard/BuyCreditsForm";
 import { requireOrganizationMembership } from "@/lib/dashboard-auth";
+import { CREDIT_PURCHASE_ROLES } from "@/lib/dashboard-role-policy";
 import {
   getDashboardCreditsData,
   normalizeDashboardCreditsPage,
@@ -14,6 +15,7 @@ import {
   type DashboardCreditsData,
 } from "@/lib/dashboard-credits";
 import { CREDIT_PACKS, CREDIT_COST_LINK, CREDIT_COST_PHONE_CALL } from "@/lib/credit-pricing";
+import type { Role } from "@prisma/client";
 
 type CreditsPageProps = {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
@@ -126,18 +128,21 @@ function PaginationControls({ data }: { data: DashboardCreditsData }) {
   );
 }
 
-async function loadCreditsData(page: number) {
+async function loadCreditsData(
+  page: number
+): Promise<{ role: Role; data: DashboardCreditsData | null }> {
   const context = await requireOrganizationMembership();
 
   try {
-    return await getDashboardCreditsData(context, { page });
+    const data = await getDashboardCreditsData(context, { page });
+    return { role: context.membership.role, data };
   } catch (error) {
     console.error("Dashboard credits load failed", {
       organizationId: context.organization.id,
       userId: context.user.id,
       errorName: error instanceof Error ? error.name : "UnknownError",
     });
-    return null;
+    return { role: context.membership.role, data: null };
   }
 }
 
@@ -145,7 +150,9 @@ async function CreditsContent({ searchParams }: CreditsPageProps) {
   const resolvedSearchParams = (await searchParams) ?? {};
   const page = normalizeDashboardCreditsPage(Number(firstQueryValue(resolvedSearchParams.page)));
   const purchaseResult = firstQueryValue(resolvedSearchParams.purchase);
-  const data = await loadCreditsData(page);
+  const { role, data } = await loadCreditsData(page);
+  const canBuyCredits = (CREDIT_PURCHASE_ROLES as readonly Role[]).includes(role);
+  const canViewLedger = role !== "SELLER";
 
   return (
     <>
@@ -169,7 +176,7 @@ async function CreditsContent({ searchParams }: CreditsPageProps) {
         <ErrorState />
       ) : (
         <>
-          <div className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className={`mb-6 grid grid-cols-1 gap-4 ${canBuyCredits ? "sm:grid-cols-2" : ""}`}>
             <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6">
               <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Current balance</p>
               <p className="mt-2 text-3xl font-semibold text-gray-900">{data.balance} credits</p>
@@ -178,18 +185,24 @@ async function CreditsContent({ searchParams }: CreditsPageProps) {
                 {CREDIT_COST_LINK === 1 ? "" : "s"}. A phone-call verification costs{" "}
                 {CREDIT_COST_PHONE_CALL} credits.
               </p>
+              {role === "SELLER" && (
+                <p className="mt-3 text-xs text-gray-400">
+                  Ask your organization owner or manager to top up if this runs low.
+                </p>
+              )}
             </div>
-            <BuyCreditsForm packs={CREDIT_PACKS} />
+            {canBuyCredits && <BuyCreditsForm packs={CREDIT_PACKS} />}
           </div>
 
-          {data.rows.length > 0 ? (
-            <>
-              <DataTable columns={COLUMNS} rows={data.rows} footer="Every purchase and charge is recorded permanently for audit." />
-              <PaginationControls data={data} />
-            </>
-          ) : (
-            <EmptyState />
-          )}
+          {canViewLedger &&
+            (data.rows.length > 0 ? (
+              <>
+                <DataTable columns={COLUMNS} rows={data.rows} footer="Every purchase and charge is recorded permanently for audit." />
+                <PaginationControls data={data} />
+              </>
+            ) : (
+              <EmptyState />
+            ))}
         </>
       )}
     </>

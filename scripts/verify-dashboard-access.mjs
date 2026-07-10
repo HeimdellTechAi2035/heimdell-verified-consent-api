@@ -103,7 +103,7 @@ const expectedMatrix = {
   settings: ["PLATFORM_ADMIN", "CLIENT_OWNER", "CLIENT_MANAGER", "OWNER", "ADMIN"],
   integrations: ["PLATFORM_ADMIN", "OWNER"],
   notifications: ["PLATFORM_ADMIN", "CLIENT_OWNER", "CLIENT_MANAGER", "OWNER", "ADMIN"],
-  credits: ["PLATFORM_ADMIN", "CLIENT_OWNER", "CLIENT_MANAGER", "OWNER", "ADMIN"],
+  credits: ["PLATFORM_ADMIN", "CLIENT_OWNER", "CLIENT_MANAGER", "OWNER", "ADMIN", "SELLER"],
   signups: ["PLATFORM_ADMIN", "OWNER"],
 };
 const allRoles = [
