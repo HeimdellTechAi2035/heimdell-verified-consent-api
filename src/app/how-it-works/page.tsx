@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { MarketingHeader } from "@/components/MarketingHeader";
-import { LegalFooter } from "@/components/LegalFooter";
+import { MarketingFooter } from "@/components/MarketingFooter";
 
 export const metadata: Metadata = {
   title: "How It Works",
@@ -207,7 +207,7 @@ export default function HowItWorksPage() {
         </section>
       </main>
 
-      <LegalFooter />
+      <MarketingFooter />
     </div>
   );
 }

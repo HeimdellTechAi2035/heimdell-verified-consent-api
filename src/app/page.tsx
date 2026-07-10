@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { MarketingHeader } from "@/components/MarketingHeader";
-import { LegalFooter } from "@/components/LegalFooter";
+import { MarketingFooter } from "@/components/MarketingFooter";
 import { CREDIT_PACKS } from "@/lib/credit-pricing";
 
 export const metadata: Metadata = {
@@ -246,7 +246,7 @@ export default function Home() {
         </section>
       </main>
 
-      <LegalFooter />
+      <MarketingFooter />
     </div>
   );
 }

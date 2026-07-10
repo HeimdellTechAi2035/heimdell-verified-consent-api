@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { MarketingHeader } from "@/components/MarketingHeader";
-import { LegalFooter } from "@/components/LegalFooter";
+import { MarketingFooter } from "@/components/MarketingFooter";
 import { submitContactMessage } from "./actions";
 
 export const metadata: Metadata = {
@@ -147,7 +147,7 @@ export default async function ContactPage({ searchParams }: Props) {
         </section>
       </main>
 
-      <LegalFooter />
+      <MarketingFooter />
     </div>
   );
 }

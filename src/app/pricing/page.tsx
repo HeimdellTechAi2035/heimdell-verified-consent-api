@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { MarketingHeader } from "@/components/MarketingHeader";
-import { LegalFooter } from "@/components/LegalFooter";
+import { MarketingFooter } from "@/components/MarketingFooter";
 import {
   CREDIT_COST_LINK,
   CREDIT_COST_PHONE_CALL,
@@ -174,7 +174,7 @@ export default function PricingPage() {
         </section>
       </main>
 
-      <LegalFooter />
+      <MarketingFooter />
     </div>
   );
 }

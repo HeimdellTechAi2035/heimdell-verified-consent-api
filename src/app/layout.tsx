@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import Script from "next/script";
 import "./globals.css";
 import { ServiceWorkerRegister } from "@/components/pwa/ServiceWorkerRegister";
+import { CookieNotice } from "@/components/CookieNotice";
 
 const appUrl = process.env.APP_URL ?? "https://telecomcompliance.uk";
 
@@ -53,6 +54,7 @@ export default function RootLayout({
         <Script src="/pwa-capture.js" strategy="beforeInteractive" />
         {children}
         <ServiceWorkerRegister />
+        <CookieNotice />
       </body>
     </html>
   );

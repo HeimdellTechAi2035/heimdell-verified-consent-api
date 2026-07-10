@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { LegalFooter } from "@/components/LegalFooter";
+import { MarketingFooter } from "@/components/MarketingFooter";
 import { submitOrganizationSignup } from "./actions";
 
 export const metadata: Metadata = {
@@ -41,7 +41,7 @@ export default async function SignupPage({ searchParams }: Props) {
             </Link>
           </div>
         </main>
-        <LegalFooter />
+        <MarketingFooter />
       </div>
     );
   }
@@ -127,7 +127,7 @@ export default async function SignupPage({ searchParams }: Props) {
           </form>
         </div>
       </main>
-      <LegalFooter />
+      <MarketingFooter />
     </div>
   );
 }
