@@ -8,6 +8,7 @@ const LEGAL_LINKS = [
   { href: "/cooling-off", label: "Cooling-Off & Cancellation" },
   { href: "/cookies", label: "Cookies" },
   { href: "/complaints", label: "Complaints" },
+  { href: "/accessibility", label: "Accessibility" },
 ];
 
 export function MarketingFooter() {

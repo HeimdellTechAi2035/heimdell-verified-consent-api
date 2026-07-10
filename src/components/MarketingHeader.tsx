@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { DashboardLoginMenu } from "@/components/DashboardLoginMenu";
 
 const NAV_LINKS = [
   { href: "/how-it-works", label: "How it works" },
@@ -32,12 +33,7 @@ export function MarketingHeader() {
         </nav>
 
         <div className="flex items-center gap-3">
-          <Link
-            href="/login"
-            className="text-sm font-medium text-gray-600 hover:text-gray-900"
-          >
-            Dashboard login
-          </Link>
+          <DashboardLoginMenu />
           <Link
             href="/signup"
             className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"

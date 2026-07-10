@@ -11,6 +11,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     "/cooling-off",
     "/cookies",
     "/complaints",
+    "/accessibility",
   ];
 
   return [
