@@ -208,11 +208,11 @@ function CertificateEvidenceSummary({
           ) : (
             <>
               <Field
-                label="Customer IP"
+                label="Customer IP (masked)"
                 value={detail.verification.customerIpAddress}
               />
               <Field
-                label="Customer user agent"
+                label="Customer device"
                 value={detail.verification.customerUserAgent}
               />
             </>

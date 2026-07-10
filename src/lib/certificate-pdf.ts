@@ -87,8 +87,8 @@ export function buildCertificatePdfLines(
       `Customer phone: ${detail.sale.customerPhone ?? "Not recorded"}`,
       `Customer email: ${detail.sale.customerEmail ?? "Not recorded"}`,
       `Customer address: ${detail.sale.customerAddress ?? "Not recorded"}`,
-      `Customer IP: ${detail.verification.customerIpAddress ?? "Not recorded"}`,
-      `Customer user agent: ${detail.verification.customerUserAgent ?? "Not recorded"}`,
+      `Customer IP (masked): ${detail.verification.customerIpAddress ?? "Not recorded"}`,
+      `Customer device: ${detail.verification.customerUserAgent ?? "Not recorded"}`,
     ]),
     ...section("Product and sale", [
       `Product/service: ${detail.sale.productName}`,

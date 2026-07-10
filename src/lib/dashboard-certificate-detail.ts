@@ -110,6 +110,66 @@ export function maskSortCodeForDashboard(value: string | null): string | null {
   return `**-**-${digits.slice(-2)}`;
 }
 
+/// Masks the last segment of an IP address for dashboard/PDF display --
+/// keeps enough to show a rough network/location for dispute evidence
+/// without exposing the customer's full, precise IP address.
+export function maskIpAddressForDashboard(value: string | null): string | null {
+  if (!value) {
+    return null;
+  }
+
+  if (value.includes(".")) {
+    const parts = value.split(".");
+    if (parts.length === 4) {
+      return `${parts[0]}.${parts[1]}.${parts[2]}.xxx`;
+    }
+    return value;
+  }
+
+  if (value.includes(":")) {
+    const parts = value.split(":");
+    const keep = Math.max(1, Math.ceil(parts.length / 2));
+    return `${parts.slice(0, keep).join(":")}:xxxx`;
+  }
+
+  return value;
+}
+
+/// Reduces a full browser user-agent string down to a short "Browser on OS"
+/// summary for dashboard/PDF display, instead of showing the raw string
+/// (which can include enough detail to fingerprint a specific device).
+export function summarizeUserAgentForDashboard(value: string | null): string | null {
+  if (!value) {
+    return null;
+  }
+
+  let os = "an unknown device";
+  if (/iphone|ipad|ipod/i.test(value)) {
+    os = "iOS";
+  } else if (/android/i.test(value)) {
+    os = "Android";
+  } else if (/windows/i.test(value)) {
+    os = "Windows";
+  } else if (/mac os x/i.test(value)) {
+    os = "Mac";
+  } else if (/linux/i.test(value)) {
+    os = "Linux";
+  }
+
+  let browser = "an unknown browser";
+  if (/edg\//i.test(value)) {
+    browser = "Edge";
+  } else if (/crios\//i.test(value) || /chrome\//i.test(value)) {
+    browser = "Chrome";
+  } else if (/fxios\//i.test(value) || /firefox\//i.test(value)) {
+    browser = "Firefox";
+  } else if (/safari\//i.test(value)) {
+    browser = "Safari";
+  }
+
+  return `${browser} on ${os}`;
+}
+
 export function buildCertificateDetailViewModel(certificate: {
   id: string;
   proofHash: string;
@@ -229,8 +289,12 @@ export function buildCertificateDetailViewModel(certificate: {
         certificate.verificationSession.declinedAt?.toISOString() ?? null,
       expiresAt: certificate.verificationSession.expiresAt.toISOString(),
       verificationMethod: stringFromJson(certificateJson, "verification_method"),
-      customerIpAddress: stringFromJson(certificateJson, "ip_address"),
-      customerUserAgent: stringFromJson(certificateJson, "user_agent"),
+      customerIpAddress: maskIpAddressForDashboard(
+        stringFromJson(certificateJson, "ip_address")
+      ),
+      customerUserAgent: summarizeUserAgentForDashboard(
+        stringFromJson(certificateJson, "user_agent")
+      ),
       callSid: stringFromJson(certificateJson, "call_sid"),
     },
     policy: {

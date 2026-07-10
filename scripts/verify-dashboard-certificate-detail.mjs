@@ -202,19 +202,26 @@ assert.equal(selectString.includes("userAgent"), false);
 const whereString = JSON.stringify(prisma.calls[0].where);
 assert.equal(whereString.includes("org_a"), true);
 
-// customerName/Phone/Email/Address, the Direct Debit bank name/account
-// holder name, and the customer IP/user-agent captured at consent time ARE
-// intentionally part of the certificate detail view model (and the PDF) --
-// this is the compliance evidence record used for audit/dispute resolution
-// and is expected to show who/what/where it covers. NOTE: this reflects
-// current shipped behavior, which is a deliberate widening from this
-// project's own stricter historical "never expose full IP/user-agent"
-// documentation (DEMO_VALIDATION_MILESTONE.md Safety Notes) -- flagged for
-// the team to confirm this is the intended compliance posture. The unmasked
-// sort code and raw secret fields must still never appear.
+// customerName/Phone/Email/Address and the Direct Debit bank name/account
+// holder name ARE intentionally part of the certificate detail view model
+// (and the PDF) -- this is the compliance evidence record and is expected
+// to show who/what it covers. The customer's IP and user-agent are
+// deliberately masked/summarized (see maskIpAddressForDashboard /
+// summarizeUserAgentForDashboard) rather than shown raw or omitted --
+// enough detail for dispute evidence without exposing full PII. The
+// unmasked sort code, raw IP/user-agent, and raw secret fields must never
+// appear.
+assert.equal(detail.verification.customerIpAddress, "203.0.113.xxx");
+assert.equal(
+  detail.verification.customerUserAgent,
+  "an unknown browser on an unknown device"
+);
+
 const serialized = JSON.stringify(detail);
 for (const sensitive of [
   "certificateJson",
+  "203.0.113.10",
+  "Sensitive user agent",
   "12-34-56",
   "encryptedAccountNumber",
   "tokenHash",
