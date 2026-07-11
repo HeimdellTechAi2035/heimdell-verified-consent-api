@@ -6,6 +6,7 @@ import { DashboardCard } from "@/components/dashboard/DashboardCard";
 import { DashboardHeader } from "@/components/dashboard/DashboardHeader";
 import { DashboardRoleGate } from "@/components/dashboard/DashboardRoleGate";
 import { DataTable, type DataTableColumn } from "@/components/dashboard/DataTable";
+import { GrantCreditsForm } from "@/components/dashboard/GrantCreditsForm";
 import { StaffPasswordResetForm } from "@/components/dashboard/StaffPasswordResetForm";
 import { StatusBadge } from "@/components/dashboard/StatusBadge";
 import { requireDashboardRole } from "@/lib/dashboard-auth";
@@ -420,6 +421,17 @@ async function ClientDetailContent({ organizationId }: { organizationId: string 
             <DetailRow label="Declined verifications" value={detail.activity.declinedVerifications} />
             <DetailRow label="Certificates" value={detail.activity.certificates} />
           </div>
+        </SectionCard>
+      </div>
+
+      <div className="mt-6">
+        <SectionCard title="Credits">
+          <p className="mb-4 text-xs leading-relaxed text-gray-500">
+            Manually grant credits without a Stripe purchase -- for support/goodwill cases or
+            testing. Always recorded as an adjustment in this organization&rsquo;s credit ledger
+            and the platform audit log.
+          </p>
+          <GrantCreditsForm organizationId={detail.organization.id} />
         </SectionCard>
       </div>
     </>
