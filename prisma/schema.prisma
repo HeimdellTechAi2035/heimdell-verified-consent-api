@@ -75,6 +75,10 @@ enum ConsentEventType {
   POLICIES_ACKNOWLEDGED
   COOLING_OFF_ACKNOWLEDGED
   DIRECT_DEBIT_AUTHORISED
+  // Conversational voice agent — granular per-state confirmation, recorded
+  // live during the call rather than bundled from a single keypress.
+  NAME_ADDRESS_CONFIRMED
+  EXPLICIT_AGREEMENT_CONFIRMED
 }
 
 enum Role {
@@ -364,6 +368,14 @@ model PhoneVerificationAttempt {
   recordingUrl             String?
   recordingDurationSeconds Int?
   errorMessage             String?
+  /// Machine-readable outcome for the conversational voice agent (e.g.
+  /// "WRONG_NUMBER", "NEEDS_FOLLOWUP_DD_MISMATCH") -- plain string, not an
+  /// enum, so new outcome categories never need another migration. Null
+  /// for calls made via the legacy DTMF script.
+  outcome                  String?
+  /// Full turn-by-turn conversation, for compliance disputes. Only
+  /// populated by the conversational voice agent.
+  transcript               Json?
 
   initiatedAt DateTime  @default(now())
   answeredAt  DateTime?
