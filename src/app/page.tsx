@@ -132,8 +132,9 @@ export default function Home() {
                 details go in once.
               </Step>
               <Step number={2} title="Customer confirms it themselves">
-                They get a link (or a phone call, read out to them) showing exactly what they
-                signed up for, including their cancellation rights, in plain English.
+                They get a link, or — if you&rsquo;d rather avoid sending links altogether — a
+                real recorded phone call reading out exactly what they signed up for, including
+                their cancellation rights, in plain English.
               </Step>
               <Step number={3} title="A certificate is created">
                 A tamper-evident record is generated the moment they confirm — dated, hashed, and
@@ -160,12 +161,12 @@ export default function Home() {
             <div className="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
               {[
                 {
-                  title: "Works with your CRM",
-                  body: "Send sales in automatically from HighLevel, Salesforce, or any system that can make a simple API call.",
+                  title: "Built for your dialler and CRM, not a new one",
+                  body: "One API call from Salesforce, HubSpot, Zoho, HighLevel, Vicidial, Five9, Connex One, or anything else that can make a web request. Agents keep working in the tool they already use — nobody logs into a separate dashboard mid-call.",
                 },
                 {
-                  title: "Link or phone call",
-                  body: "Most customers confirm with a link. For anyone who prefers to talk, we can call and read the terms out loud.",
+                  title: "No link required",
+                  body: "Every verification can be a real phone call instead of a link: we call the customer, read the terms aloud, and record their spoken agreement — no click, nothing that looks like a phishing attempt.",
                 },
                 {
                   title: "Cooling-off & Direct Debit, covered",
@@ -181,7 +182,7 @@ export default function Home() {
                 },
                 {
                   title: "Proof that holds up",
-                  body: "Every certificate is fingerprinted with a cryptographic hash, so tampering after the fact is detectable.",
+                  body: "Phone verifications capture the actual recorded call, not just a click. Every certificate is fingerprinted with a cryptographic hash, so tampering after the fact is detectable.",
                 },
               ].map((feature) => (
                 <div key={feature.title} className="rounded-xl border border-gray-200 p-6">

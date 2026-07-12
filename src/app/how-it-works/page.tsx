@@ -36,6 +36,16 @@ const faqs = [
     answer:
       "No. Heimdell sits alongside your CRM. Sales still get created wherever your team already works — Heimdell just handles getting the customer's own confirmation and turning it into evidence.",
   },
+  {
+    question: "Won't a verification link look suspicious to customers who are wary of phishing?",
+    answer:
+      "It's a fair concern — UK consumers are (rightly) trained to be suspicious of unexpected links from telecom, energy, and insurance callers. That's exactly why phone-call verification exists as a genuine alternative: no link, no click, just a real phone call reading out the terms and recording the customer's spoken agreement. Clients who'd rather avoid sending links entirely can use phone verification for every sale.",
+  },
+  {
+    question: "Can this plug into our dialler (Vicidial, Five9, Connex One) or CRM?",
+    answer:
+      "Yes — sale intake is a single API call, so anything that can make a web request can submit sales directly: Salesforce, HubSpot, Zoho, HighLevel, Vicidial, Five9, Connex One, or an in-house system. Agents keep working in their existing tool; there's no requirement to log into a separate Heimdell dashboard mid-call.",
+  },
 ];
 
 const jsonLd = {
@@ -82,9 +92,10 @@ export default function HowItWorksPage() {
             </p>
             <ul className="mt-4 list-disc space-y-2 pl-6 text-base leading-7 text-gray-600">
               <li>
-                <strong className="text-gray-900">Automatically,</strong> if your CRM (like
-                HighLevel, Salesforce, or your own system) sends it straight through with one API
-                call — the seller never leaves the tool they already use.
+                <strong className="text-gray-900">Automatically,</strong> from whatever CRM or
+                dialler your team already runs on — Salesforce, HubSpot, Zoho, HighLevel,
+                Vicidial, Five9, Connex One, or anything else that can make a web request. One
+                API call, and the seller never leaves the tool they&rsquo;re already working in.
               </li>
               <li>
                 <strong className="text-gray-900">By hand,</strong> if a member of staff enters
@@ -93,7 +104,9 @@ export default function HowItWorksPage() {
             </ul>
             <p className="mt-4 text-base leading-7 text-gray-600">
               Either way, all that&rsquo;s needed is the customer&rsquo;s details, what they&rsquo;re
-              buying, the price, and — if relevant — their Direct Debit details.
+              buying, the price, and — if relevant — their Direct Debit details. Heimdell is
+              designed to sit invisibly behind your existing sales stack, not to become a second
+              system your agents have to check.
             </p>
 
             <h2 className="mt-12 text-2xl font-semibold text-gray-900">
@@ -112,8 +125,12 @@ export default function HowItWorksPage() {
               </li>
               <li>
                 <strong className="text-gray-900">A phone call,</strong> for customers who&rsquo;d
-                rather listen than read. The same information is read out to them, and they
-                confirm by pressing a key.
+                rather listen than read — or for clients who&rsquo;d rather not send links at
+                all. UK consumers are (rightly) wary of clicking links from telecom, energy, and
+                insurance callers, so a real phone call avoids that red flag entirely. We call the
+                customer, read out the terms, and they confirm by pressing a key. The call itself
+                is recorded, so the evidence is the customer&rsquo;s own voice agreeing — not just
+                a click.
               </li>
             </ul>
             <p className="mt-4 text-base leading-7 text-gray-600">
@@ -126,10 +143,11 @@ export default function HowItWorksPage() {
             </h2>
             <p className="mt-4 text-base leading-7 text-gray-600">
               The moment the customer confirms, Heimdell generates a certificate: a record of
-              what they saw, what they agreed to, and exactly when. It&rsquo;s fingerprinted with
-              a cryptographic hash, so if a single character of it were ever changed, that change
-              would be detectable. It shows up straight away in your dashboard and, if you use
-              webhooks, can notify your CRM automatically too.
+              what they saw, what they agreed to, and exactly when. For phone verifications, the
+              call itself is recorded too, held alongside the certificate as further evidence.
+              The certificate is fingerprinted with a cryptographic hash, so if a single character
+              of it were ever changed, that change would be detectable. It shows up straight away
+              in your dashboard and, if you use webhooks, can notify your CRM automatically too.
             </p>
           </div>
         </section>
