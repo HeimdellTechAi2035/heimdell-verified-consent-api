@@ -165,6 +165,28 @@ export function buildAlreadyResolvedTwiml(
   );
 }
 
+export type ConversationRelayTwimlParams = {
+  wsUrl: string;
+  voice?: string;
+  language?: string;
+};
+
+/**
+ * Hands the call off to the always-on conversational voice agent service
+ * instead of the static disclosure + DTMF script. Gated behind
+ * VOICE_AGENT_ENABLED in the /twiml route -- this builder itself has no
+ * flag logic, so it stays trivially testable like the other builders here.
+ */
+export function buildConversationRelayTwiml(params: ConversationRelayTwimlParams): string {
+  const voice = params.voice ?? "en-GB-Standard-A";
+  const language = params.language ?? "en-GB";
+  return (
+    `<?xml version="1.0" encoding="UTF-8"?><Response><Connect>` +
+    `<ConversationRelay url="${escapeXml(params.wsUrl)}" voice="${escapeXml(voice)}" language="${escapeXml(language)}" />` +
+    `</Connect></Response>`
+  );
+}
+
 export function buildInvalidRequestTwiml(): string {
   return (
     `<?xml version="1.0" encoding="UTF-8"?><Response>` +

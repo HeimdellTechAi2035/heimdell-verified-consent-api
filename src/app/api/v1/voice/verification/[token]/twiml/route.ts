@@ -5,7 +5,11 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { verifyTwilioRequest, TwilioSignatureError, buildCanonicalTwilioUrl } from "@/lib/twilio-signature";
 import { lookupVerificationSession } from "@/lib/session-lookup";
-import { buildVerificationScriptTwiml, buildInvalidRequestTwiml } from "@/lib/voice-twiml";
+import {
+  buildVerificationScriptTwiml,
+  buildInvalidRequestTwiml,
+  buildConversationRelayTwiml,
+} from "@/lib/voice-twiml";
 
 function xmlResponse(xml: string, status = 200) {
   return new NextResponse(xml, {
@@ -36,6 +40,17 @@ export async function POST(
   }
 
   const { data } = lookup;
+
+  // Conversational voice agent cutover -- permanent per-environment toggle,
+  // not a one-way migration. Only takes effect once both the flag AND the
+  // WS base URL are set, so a half-configured environment never silently
+  // produces a broken call; otherwise falls through to the legacy script
+  // below completely unchanged.
+  if (process.env.VOICE_AGENT_ENABLED === "true" && process.env.VOICE_AGENT_WS_URL) {
+    const wsBase = process.env.VOICE_AGENT_WS_URL.replace(/\/$/, "");
+    return xmlResponse(buildConversationRelayTwiml({ wsUrl: `${wsBase}/call/${token}` }));
+  }
+
   const gatherActionUrl = buildCanonicalTwilioUrl(req).replace("/twiml", "/gather");
 
   const xml = buildVerificationScriptTwiml({
