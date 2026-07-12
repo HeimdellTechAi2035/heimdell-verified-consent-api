@@ -16,6 +16,11 @@ dist/
 # Prisma
 .prisma/
 
+# Synced schema copy for the standalone voice-agent-service (see its
+# scripts/sync-schema.mjs) -- not a leading slash, so this only matches the
+# nested voice-agent-service/prisma/, never the real root prisma/ directory.
+voice-agent-service/prisma/
+
 # Test coverage
 coverage/
 

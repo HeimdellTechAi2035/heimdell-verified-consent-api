@@ -1,10 +1,7 @@
 import { createServer } from "node:http";
 import { WebSocketServer } from "ws";
 import { config } from "./config";
-
-// Phase A scaffold: proves the always-on VM deployment works end to end
-// (HTTP health check + a live WebSocket connection) before any Twilio,
-// Claude, or database wiring is added in later phases.
+import { handleConversationRelayConnection } from "./conversation-relay/ws-handler";
 
 const server = createServer((req, res) => {
   if (req.method === "GET" && req.url === "/healthz") {
@@ -20,15 +17,22 @@ const server = createServer((req, res) => {
 const wss = new WebSocketServer({ noServer: true });
 
 wss.on("connection", (socket, req) => {
-  console.log(`[voice-agent] ws connection opened: ${req.url}`);
+  const token = (req.url ?? "").replace(/^\/call\//, "").split("?")[0];
 
-  socket.on("message", (data) => {
-    console.log(`[voice-agent] ws message received on ${req.url}: ${data.toString()}`);
-    socket.send(data.toString());
+  if (!token) {
+    console.error(`[voice-agent] ws connection with no token, closing: ${req.url}`);
+    socket.close();
+    return;
+  }
+
+  console.log(`[voice-agent] ws connection opened for call token ${token.slice(0, 8)}...`);
+  void handleConversationRelayConnection(socket, token).catch((err) => {
+    console.error(`[voice-agent] unhandled error in connection handler:`, err);
+    socket.close();
   });
 
   socket.on("close", () => {
-    console.log(`[voice-agent] ws connection closed: ${req.url}`);
+    console.log(`[voice-agent] ws connection closed for call token ${token.slice(0, 8)}...`);
   });
 });
 

@@ -1,4 +1,4 @@
-# Keeps the Fly.io build context (repo root) small and fast to upload --
+# Keeps the Docker build context (repo root) small and fast to upload --
 # only prisma/, src/lib/, and voice-agent-service/ are actually COPYed by
 # voice-agent-service/Dockerfile.
 node_modules
@@ -9,3 +9,4 @@ coverage
 *.tsbuildinfo
 voice-agent-service/node_modules
 voice-agent-service/dist
+voice-agent-service/prisma

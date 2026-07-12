@@ -46,7 +46,26 @@ export type PhoneCertificateEvidence = SharedAcknowledgements & {
   call_completed_at: Date;
 };
 
-export type CertificateEvidence = WebCertificateEvidence | PhoneCertificateEvidence;
+/**
+ * Evidence from the conversational AI voice agent -- unlike
+ * PhoneCertificateEvidence, the acknowledgement booleans here reflect real
+ * per-item confirmations captured live during the call (see
+ * voice-agent-service/src/consent-events.ts), not a single bundled keypress.
+ * The granular ConsentEvent rows are written as the call happens, so
+ * completeVerificationSession() must not re-create them for this method --
+ * only the final VERIFICATION_COMPLETED event is added at completion time.
+ */
+export type ConversationalPhoneCertificateEvidence = SharedAcknowledgements & {
+  method: "phone_call_agent";
+  call_sid: string;
+  phone_number: string;
+  call_completed_at: Date;
+};
+
+export type CertificateEvidence =
+  | WebCertificateEvidence
+  | PhoneCertificateEvidence
+  | ConversationalPhoneCertificateEvidence;
 
 /**
  * Safe mandate subset — excludes encryptedAccountNumber.
@@ -168,10 +187,17 @@ export function createCertificateJson(input: CertificateInput): {
     return { payload, proofHash: hashCanonicalFields(canonicalFields) };
   }
 
+  // "phone_call" (legacy DTMF) and "phone_call_agent" (conversational voice
+  // agent) share this whole shape except digits_pressed, which only the
+  // legacy method has -- kept as one branch (rather than a third near-
+  // duplicate block) so the existing "phone_call" hash computation stays
+  // byte-identical to what it always produced.
+  const isLegacyPhoneCall = evidence.method === "phone_call";
+
   const payload: Record<string, unknown> = {
     ...sharedPayload,
     call_sid: evidence.call_sid,
-    digits_pressed: evidence.digits_pressed,
+    ...(isLegacyPhoneCall ? { digits_pressed: evidence.digits_pressed } : {}),
     phone_number: evidence.phone_number,
     completed_at: evidence.call_completed_at.toISOString(),
   };
@@ -193,7 +219,7 @@ export function createCertificateJson(input: CertificateInput): {
     cooling_off_acknowledged: payload.cooling_off_acknowledged,
     verification_method: payload.verification_method,
     call_sid: payload.call_sid,
-    digits_pressed: payload.digits_pressed,
+    ...(isLegacyPhoneCall ? { digits_pressed: payload.digits_pressed } : {}),
     phone_number: payload.phone_number,
     completed_at: payload.completed_at,
     sales_channel: payload.sales_channel,

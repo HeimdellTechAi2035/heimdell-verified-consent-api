@@ -77,6 +77,26 @@ function buildConsentEvents(
     ];
   }
 
+  if (evidence.method === "phone_call_agent") {
+    // The conversational voice agent already wrote NAME_ADDRESS_CONFIRMED /
+    // PRODUCT_CONFIRMED / TERMS_ACKNOWLEDGED / POLICIES_ACKNOWLEDGED /
+    // DIRECT_DEBIT_AUTHORISED / EXPLICIT_AGREEMENT_CONFIRMED live, one per
+    // state, as the call actually happened (see
+    // voice-agent-service/src/consent-events.ts) -- re-creating bundled
+    // versions of those here would be duplicate, less accurate evidence.
+    return [
+      {
+        verificationSessionId,
+        eventType: "VERIFICATION_COMPLETED",
+        eventPayload: {
+          call_sid: evidence.call_sid,
+          completed_at: evidence.call_completed_at.toISOString(),
+          via: "phone_call_agent",
+        } as unknown as Prisma.InputJsonValue,
+      },
+    ];
+  }
+
   const phoneMetadata = { via: "phone_call", call_sid: evidence.call_sid };
   return [
     {

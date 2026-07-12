@@ -5,7 +5,7 @@ COPY src/lib ./src/lib
 COPY voice-agent-service ./voice-agent-service
 WORKDIR /app/voice-agent-service
 RUN npm ci
-RUN npx prisma generate --schema=../prisma/schema.prisma
+RUN npm run db:generate
 RUN npm run build
 
 FROM node:20-slim AS runtime
