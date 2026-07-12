@@ -219,7 +219,10 @@ export async function POST(request: Request) {
   const session = sale.verificationSessions[0];
   const verificationUrl = `${APP_URL}/v/${tokenRaw}`;
 
-  sendVerificationLinkNotification({
+  // Awaited deliberately -- see src/app/api/v1/sales/intake/route.ts for why
+  // an un-awaited call here risks being killed mid-flight on serverless
+  // before the SMS/email/webhook ever reaches the provider.
+  await sendVerificationLinkNotification({
     saleId: sale.id,
     verificationSessionId: session.id,
     token: tokenRaw,

@@ -374,7 +374,12 @@ export async function createDashboardVerification(params: {
 
   const verificationUrl = `${APP_URL}/v/${token}`;
 
-  sendVerificationLinkNotification({
+  // Awaited deliberately -- see src/app/api/v1/sales/intake/route.ts for why
+  // an un-awaited call here risks being killed mid-flight on serverless
+  // before the phone call/SMS/email ever reaches the provider. This is
+  // exactly the bug that caused a "Phone call" verification created from
+  // this form to never actually ring the customer.
+  await sendVerificationLinkNotification({
     saleId: sale.id,
     verificationSessionId: session.id,
     token,

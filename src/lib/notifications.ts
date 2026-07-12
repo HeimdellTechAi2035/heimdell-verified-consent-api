@@ -2,6 +2,7 @@ import type { NotificationChannel, NotificationStatus, VerificationMethod } from
 import { db } from "@/lib/db";
 import { deliverCustomerNotification } from "@/lib/notification-delivery";
 import { initiateVerificationCall } from "@/lib/notification-providers";
+import { normalizePhoneToE164 } from "@/lib/phone-number";
 import { queueWebhookDelivery } from "@/lib/webhooks";
 
 export type NotificationResult = {
@@ -156,10 +157,18 @@ async function initiatePhoneVerificationCall(params: {
     return { ok: false, reason: "Voice provider phone number is not configured" };
   }
 
+  // Twilio requires E.164 (e.g. "+447418008279") and rejects anything else --
+  // normalize here so a customer number typed as "07418008279" still dials
+  // correctly instead of silently failing at the provider.
+  const toNumber = normalizePhoneToE164(params.customerPhone);
+  if (!toNumber) {
+    return { ok: false, reason: `Customer phone number could not be normalized for calling: ${params.customerPhone}` };
+  }
+
   const attempt = await db.phoneVerificationAttempt.create({
     data: {
       verificationSessionId: params.verificationSessionId,
-      toPhone: params.customerPhone,
+      toPhone: toNumber,
       fromPhone: fromNumber,
       status: "QUEUED",
     },
@@ -167,7 +176,7 @@ async function initiatePhoneVerificationCall(params: {
   });
 
   const result = await initiateVerificationCall({
-    to: params.customerPhone,
+    to: toNumber,
     from: fromNumber,
     twimlUrl: `${appUrl}/api/v1/voice/verification/${params.token}/twiml`,
     statusCallbackUrl: `${appUrl}/api/v1/voice/verification/${params.token}/status`,

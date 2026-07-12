@@ -231,8 +231,12 @@ export async function POST(req: NextRequest) {
     const session = sale.verificationSessions[0];
     const verificationUrl = `${APP_URL}/v/${token}`;
 
-    // Queue notification logging — fire-and-forget; must never break core flow.
-    sendVerificationLinkNotification({
+    // Awaited deliberately -- on serverless (Netlify), an un-awaited
+    // "fire-and-forget" call here can be killed mid-flight the moment this
+    // handler returns its response, silently dropping the SMS/email/phone
+    // call before it ever reaches the provider. Still never breaks the core
+    // response: errors are caught and logged, not rethrown.
+    await sendVerificationLinkNotification({
       saleId: sale.id,
       verificationSessionId: session.id,
       token,
