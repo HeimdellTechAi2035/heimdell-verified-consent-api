@@ -158,16 +158,9 @@ export default function HowItWorksPage() {
               Who sees what
             </h2>
             <p className="mx-auto mt-4 max-w-2xl text-center text-base leading-7 text-gray-600">
-              Everyone gets their own dashboard, and only sees what&rsquo;s relevant to them.
+              Your team gets its own dashboard, and only sees what&rsquo;s relevant to them.
             </p>
-            <div className="mt-10 grid gap-6 sm:grid-cols-3">
-              <div className="rounded-xl border border-gray-200 bg-white p-6">
-                <h3 className="text-base font-semibold text-gray-900">Platform admin</h3>
-                <p className="mt-2 text-sm leading-6 text-gray-600">
-                  Heimdell staff who set up new client companies and keep the platform running.
-                  They don&rsquo;t see customer sales data unless a client asks for support.
-                </p>
-              </div>
+            <div className="mt-10 grid gap-6 sm:grid-cols-2">
               <div className="rounded-xl border border-gray-200 bg-white p-6">
                 <h3 className="text-base font-semibold text-gray-900">Client company</h3>
                 <p className="mt-2 text-sm leading-6 text-gray-600">

@@ -173,8 +173,8 @@ export default function Home() {
                   body: "Cancellation rights and Direct Debit Guarantee wording are shown and confirmed every time, automatically.",
                 },
                 {
-                  title: "Three dashboards, one system",
-                  body: "Your admin team, each client company, and individual sellers each see only what they need — nothing more.",
+                  title: "Company and seller dashboards, no crossover",
+                  body: "Your management team sees everything for your company; each seller only sees the sales they personally submitted — nothing more.",
                 },
                 {
                   title: "Nothing sensitive left lying around",
