@@ -2,7 +2,7 @@ import { createServer } from "node:http";
 import { WebSocketServer } from "ws";
 import { config } from "./config";
 
-// Phase A scaffold: proves the always-on Fly.io deployment works end to end
+// Phase A scaffold: proves the always-on VM deployment works end to end
 // (HTTP health check + a live WebSocket connection) before any Twilio,
 // Claude, or database wiring is added in later phases.
 
