@@ -1,0 +1,31 @@
+# Deploy from the REPO ROOT (not this directory), since the Dockerfile needs
+# access to ../prisma and ../src/lib as build context:
+#
+#   fly deploy . --config voice-agent-service/fly.toml --app heimdell-voice-agent
+#
+# (first time only: fly apps create heimdell-voice-agent, then
+#  fly secrets set --config voice-agent-service/fly.toml --app heimdell-voice-agent DATABASE_URL=... etc)
+
+app = "heimdell-voice-agent"
+primary_region = "lhr" # London -- closest to Heimdell's UK customers/DB region
+
+[build]
+  dockerfile = "voice-agent-service/Dockerfile"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "10s"
+    method = "GET"
+    path = "/healthz"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

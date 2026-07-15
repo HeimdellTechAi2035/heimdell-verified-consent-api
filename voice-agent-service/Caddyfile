@@ -1,3 +1,0 @@
-{$VOICE_AGENT_DOMAIN} {
-	reverse_proxy voice-agent:8080
-}
