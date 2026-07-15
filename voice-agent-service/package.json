@@ -10,7 +10,7 @@
     "dev": "tsx watch src/server.ts",
     "db:generate": "node scripts/sync-schema.mjs && prisma generate --schema=./prisma/schema.prisma",
     "typecheck": "tsc --noEmit",
-    "build": "esbuild src/server.ts --bundle --platform=node --target=node20 --format=esm --packages=external --outfile=dist/server.js",
+    "build": "esbuild src/server.ts --bundle --platform=node --target=node20 --format=esm --outfile=dist/server.js --tsconfig=tsconfig.json --external:@prisma/client --external:ws --external:@anthropic-ai/sdk --external:bcryptjs --external:nanoid --external:zod",
     "start": "node dist/server.js",
     "test:conversation": "node scripts/local-fake-twilio-client.mjs"
   },
