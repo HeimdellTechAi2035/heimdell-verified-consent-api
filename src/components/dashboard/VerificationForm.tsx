@@ -369,6 +369,7 @@ export function VerificationForm({
           label="Phone"
           name="customerPhone"
           onValueChange={setCustomerPhone}
+          placeholder="07123 456789 or +447123456789"
           required
         />
         <Field label="Email" name="customerEmail" type="email" />
