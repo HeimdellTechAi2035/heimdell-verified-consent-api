@@ -13,6 +13,7 @@ import { sendVerificationLinkNotification } from "@/lib/notifications";
 import { buildPolicySnapshotForClient } from "@/lib/client-policy";
 import { chargeCreditsForVerification, InsufficientCreditsError } from "@/lib/credit-ledger";
 import { creditCostForMethod } from "@/lib/credit-pricing";
+import { normalizePhoneToE164 } from "@/lib/phone-number";
 import type { VerificationMethod } from "@prisma/client";
 
 const APP_URL = process.env.APP_URL ?? "http://localhost:3000";
@@ -36,9 +37,6 @@ const optionalEmailSchema = z.preprocess(
 );
 
 const digitsOnly = (value: unknown) => String(value ?? "").replace(/[\s-]/g, "");
-
-/** Loose E.164-ish check — Twilio Voice needs a real dialable number. */
-const PHONE_CALL_CAPABLE_PATTERN = /^\+?[1-9]\d{7,14}$/;
 
 export const dashboardVerificationSchema = z.object({
   sellerUserId: z
@@ -105,7 +103,13 @@ export const dashboardVerificationSchema = z.object({
   aiMarketingOptIn: z.preprocess((value) => value === "on", z.boolean()),
   verificationMethod: z.enum(["link", "phone_call"]).default("link"),
 }).superRefine((data, ctx) => {
-  if (data.verificationMethod === "phone_call" && !PHONE_CALL_CAPABLE_PATTERN.test(data.customerPhone)) {
+  // Reuses the exact same normalizer initiatePhoneVerificationCall() uses
+  // right before dialing (src/lib/notifications.ts), so this check can
+  // never reject a number the call-placing code would actually have
+  // accepted -- e.g. a UK number typed as "07418008279" normalizes fine
+  // to "+447418008279" and must not be rejected here just because it
+  // doesn't already start with "+" or a non-zero digit.
+  if (data.verificationMethod === "phone_call" && !normalizePhoneToE164(data.customerPhone)) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       path: ["customerPhone"],

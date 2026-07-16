@@ -1,6 +1,7 @@
 // Phase 2 — Zod validation schemas with normalization
 
 import { z } from "zod";
+import { normalizePhoneToE164 } from "@/lib/phone-number";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -8,9 +9,6 @@ import { z } from "zod";
 
 /** Strip spaces and hyphens — used to normalise sort codes and account numbers. */
 const normaliseDigitsOnly = (v: string) => v.replace(/[\s-]/g, "");
-
-/** Loose E.164-ish check — Twilio Voice needs a real dialable number. */
-const PHONE_CALL_CAPABLE_PATTERN = /^\+?[1-9]\d{7,14}$/;
 
 // ---------------------------------------------------------------------------
 // Sale intake schema
@@ -116,7 +114,13 @@ export const saleIntakeSchema = z.object({
 
   verification_method: z.enum(["link", "phone_call"]).default("link"),
 }).superRefine((data, ctx) => {
-  if (data.verification_method === "phone_call" && !PHONE_CALL_CAPABLE_PATTERN.test(data.customer.phone)) {
+  // Reuses the exact same normalizer initiatePhoneVerificationCall() uses
+  // right before dialing (src/lib/notifications.ts), so this check can
+  // never reject a number the call-placing code would actually have
+  // accepted -- e.g. a UK number sent as "07418008279" normalizes fine to
+  // "+447418008279" and must not be rejected here just because it doesn't
+  // already start with "+" or a non-zero digit.
+  if (data.verification_method === "phone_call" && !normalizePhoneToE164(data.customer.phone)) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       path: ["customer", "phone"],

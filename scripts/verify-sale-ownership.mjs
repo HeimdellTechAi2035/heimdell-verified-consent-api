@@ -25,7 +25,10 @@ function loadTsModule(path, mocks = {}) {
   return module.exports;
 }
 
-const validation = loadTsModule("src/lib/validation.ts");
+const phoneNumber = loadTsModule("src/lib/phone-number.ts");
+const validation = loadTsModule("src/lib/validation.ts", {
+  "@/lib/phone-number": phoneNumber,
+});
 
 const basePayload = {
   client_reference: "sale-ref-001",
