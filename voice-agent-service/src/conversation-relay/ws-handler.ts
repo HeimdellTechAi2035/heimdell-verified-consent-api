@@ -121,6 +121,7 @@ export async function handleConversationRelayConnection(socket: WebSocket, token
   const turnHistory: ConversationTurn[] = [OPENING_TURN];
   const transcript: ConversationTurn[] = [];
   let resolved = false;
+  let turnInProgress = false;
   const failureState = { consecutiveFailures: 0 };
 
   socket.on("message", (data) => {
@@ -178,10 +179,35 @@ export async function handleConversationRelayConnection(socket: WebSocket, token
             return;
           }
 
+          // A real test call showed the agent repeating itself and cutting
+          // off mid-conversation -- almost certainly ConversationRelay
+          // sending an interim (non-final) transcript as its own "prompt"
+          // message ahead of the final one, which was being processed as a
+          // complete customer turn. `last === false` is skipped outright;
+          // `turnInProgress` is a second, cause-agnostic guard against any
+          // overlapping turn, in case interim transcripts aren't the only
+          // way two "prompt" messages could ever arrive before the first
+          // finishes processing.
+          if (message.last === false) {
+            console.log(`[voice-agent] skipping non-final prompt for call ${callSid}: ${message.voicePrompt}`);
+            return;
+          }
+
+          if (turnInProgress) {
+            console.log(`[voice-agent] dropping prompt while a turn is already in progress for call ${callSid}: ${message.voicePrompt}`);
+            return;
+          }
+
+          turnInProgress = true;
           turnHistory.push({ role: "user", content: message.voicePrompt });
           transcript.push({ role: "user", content: message.voicePrompt });
 
-          const nextState = await runTurn(socket, currentState, callSession, callSid, turnHistory, transcript, failureState);
+          let nextState: RunTurnResult;
+          try {
+            nextState = await runTurn(socket, currentState, callSession, callSid, turnHistory, transcript, failureState);
+          } finally {
+            turnInProgress = false;
+          }
 
           if (nextState === FORCE_END) {
             resolved = true;

@@ -108,13 +108,15 @@ There is no Direct Debit mandate on file for this sale. Say: "It looks like I do
 
     const lastTwoDigits = dd.accountNumberLast4.slice(-2);
     return `
-You are verifying a Direct Debit mandate that was already set up at signup -- you are not collecting new payment details, only confirming what's on file. Never ask for or repeat a full account number.
+You are verifying a Direct Debit mandate that was already set up at signup -- you are not collecting new payment details, only confirming what's on file. Never ask for or state a full account number -- you only ever have the last two digits, never the full number.
 
-Say: "For security, I just need to confirm a few details already provided when you signed up." Then ask: "I have the bank listed as ${dd.bankName}. Is that correct?" If confirmed, continue; if not, call advance_conversation with next_state "DD_MISMATCH_FOLLOWUP".
+This is three separate confirmations, one per turn -- ask one, wait for a clear answer, then move to the next:
 
-Then ask: "And the sort code ending in ${dd.sortCode}. Is that correct?" If confirmed, continue; if not, call advance_conversation with next_state "DD_MISMATCH_FOLLOWUP".
+1. Say: "For security, I just need to confirm a few details already provided when you signed up. I have the bank listed as ${dd.bankName}. Is that correct?" If confirmed, move to the next confirmation on your following turn. If not, call advance_conversation with next_state "DD_MISMATCH_FOLLOWUP".
 
-Then ask: "For security, can you tell me the last two digits of the account number you used?" Compare what they say against "${lastTwoDigits}". If it matches, call advance_conversation with next_state "EXPLICIT_AGREEMENT". If it does not match, or they refuse to answer, call advance_conversation with next_state "DD_MISMATCH_FOLLOWUP".
+2. Ask: "And the sort code as ${dd.sortCode}. Is that correct?" If confirmed, move to the next confirmation on your following turn. If not, call advance_conversation with next_state "DD_MISMATCH_FOLLOWUP".
+
+3. Ask: "And the account number ending in ${lastTwoDigits}. Is that correct?" If confirmed, call advance_conversation with next_state "EXPLICIT_AGREEMENT". If they say it's not correct, or seem unsure, call advance_conversation with next_state "DD_MISMATCH_FOLLOWUP".
     `.trim();
   },
 };
