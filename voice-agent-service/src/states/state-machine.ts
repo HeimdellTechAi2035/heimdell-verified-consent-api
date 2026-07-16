@@ -34,7 +34,8 @@ function extractToolInput(response: Anthropic.Message): AdvanceConversationToolI
 
 export type AdvanceTurnResult =
   | { ok: true; result: StateMachineResult; consentEventRecorded: boolean }
-  | { ok: false; reason: "NO_TOOL_CALL" | "ILLEGAL_TRANSITION" };
+  | { ok: false; reason: "NO_TOOL_CALL" | "ILLEGAL_TRANSITION" }
+  | { ok: false; reason: "API_ERROR"; error: unknown };
 
 /**
  * Runs one conversation turn: the customer's utterance is already appended
@@ -42,6 +43,12 @@ export type AdvanceTurnResult =
  * advance_conversation so state routing is always a structured decision,
  * then validates the chosen next_state against this state's own legal
  * transitions -- Claude's choice is never trusted unconditionally.
+ *
+ * The Claude call itself is caught separately from tool-parsing failures --
+ * a transient API error (e.g. Anthropic returning 529 overloaded, seen on
+ * a real test call) needs different handling from the caller: no amount of
+ * "could you repeat that?" fixes an API outage, so this is reported as its
+ * own reason rather than folded into NO_TOOL_CALL.
  */
 export async function advanceConversationTurn(
   currentStateId: ConversationStateId,
@@ -50,14 +57,19 @@ export async function advanceConversationTurn(
   const definition = STATE_DEFINITIONS[currentStateId];
   const systemPrompt = buildFullSystemPrompt(definition, ctx);
 
-  const response = await anthropic.messages.create({
-    model: CONVERSATION_MODEL,
-    max_tokens: 1024,
-    system: systemPrompt,
-    messages: ctx.turnHistory.map((turn) => ({ role: turn.role, content: turn.content })),
-    tools: [ADVANCE_CONVERSATION_TOOL],
-    tool_choice: { type: "tool", name: "advance_conversation" },
-  });
+  let response: Anthropic.Message;
+  try {
+    response = await anthropic.messages.create({
+      model: CONVERSATION_MODEL,
+      max_tokens: 1024,
+      system: systemPrompt,
+      messages: ctx.turnHistory.map((turn) => ({ role: turn.role, content: turn.content })),
+      tools: [ADVANCE_CONVERSATION_TOOL],
+      tool_choice: { type: "tool", name: "advance_conversation" },
+    });
+  } catch (error) {
+    return { ok: false, reason: "API_ERROR", error };
+  }
 
   const toolInput = extractToolInput(response);
   if (!toolInput) {

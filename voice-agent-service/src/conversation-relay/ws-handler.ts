@@ -14,30 +14,67 @@ const OPENING_TURN: ConversationTurn = {
 };
 
 const FALLBACK_REPLY = "Sorry, could you say that again?";
+const API_ERROR_REPLY =
+  "Sorry, I'm having a technical difficulty right now. Someone from our team will follow up with you directly to complete this. Thank you for your time, goodbye.";
+const REPEATED_FAILURE_REPLY =
+  "Sorry, I'm having trouble understanding. Someone from our team will follow up with you directly to complete this. Thank you for your time, goodbye.";
+
+// A real test call hit repeated Anthropic 529 "Overloaded" errors and, with
+// no handling beyond a console.error, went completely silent for minutes
+// before the connection eventually dropped -- a genuinely broken customer
+// experience on a live call. Any API failure now speaks an apology and
+// ends the call cleanly rather than retrying into dead air; a Claude
+// response that's merely unparseable (no tool call / illegal transition)
+// gets one soft re-prompt, but forces the same clean ending after two in a
+// row, rather than looping indefinitely.
+const MAX_CONSECUTIVE_SOFT_FAILURES = 2;
+
+const FORCE_END = "FORCE_END" as const;
+type RunTurnResult = StateId | typeof FORCE_END;
 
 function send(socket: WebSocket, message: Parameters<typeof serializeOutboundMessage>[0]) {
   socket.send(serializeOutboundMessage(message));
 }
 
-/** Runs one Claude turn, speaks the reply, and records a live ConsentEvent if this turn's transition earned one. Returns the resulting state (may be the same state, a real transition, or a terminal state). */
+function speakAndEnd(socket: WebSocket, text: string, turnHistory: ConversationTurn[], transcript: ConversationTurn[]) {
+  turnHistory.push({ role: "assistant", content: text });
+  transcript.push({ role: "assistant", content: text });
+  send(socket, { type: "text", token: text, last: true });
+}
+
+/** Runs one Claude turn, speaks the reply, and records a live ConsentEvent if this turn's transition earned one. Returns the resulting state (may be the same state, a real transition, a terminal state, or FORCE_END on an unrecoverable failure. */
 async function runTurn(
   socket: WebSocket,
   currentState: ConversationStateId,
   callSession: CallSession,
   callSid: string,
   turnHistory: ConversationTurn[],
-  transcript: ConversationTurn[]
-): Promise<StateId> {
+  transcript: ConversationTurn[],
+  failureState: { consecutiveFailures: number }
+): Promise<RunTurnResult> {
   const turn = await advanceConversationTurn(currentState, { callSession, turnHistory });
 
   if (!turn.ok) {
-    console.error(`[voice-agent] ${turn.reason} in state ${currentState}, call ${callSid}`);
+    console.error(`[voice-agent] ${turn.reason} in state ${currentState}, call ${callSid}`, "error" in turn ? turn.error : "");
+
+    if (turn.reason === "API_ERROR") {
+      speakAndEnd(socket, API_ERROR_REPLY, turnHistory, transcript);
+      return FORCE_END;
+    }
+
+    failureState.consecutiveFailures += 1;
+    if (failureState.consecutiveFailures > MAX_CONSECUTIVE_SOFT_FAILURES) {
+      speakAndEnd(socket, REPEATED_FAILURE_REPLY, turnHistory, transcript);
+      return FORCE_END;
+    }
+
     turnHistory.push({ role: "assistant", content: FALLBACK_REPLY });
     transcript.push({ role: "assistant", content: FALLBACK_REPLY });
     send(socket, { type: "text", token: FALLBACK_REPLY, last: true });
     return currentState;
   }
 
+  failureState.consecutiveFailures = 0;
   const { replyText, nextState, capturedData } = turn.result;
   turnHistory.push({ role: "assistant", content: replyText });
   transcript.push({ role: "assistant", content: replyText });
@@ -61,6 +98,22 @@ async function runTurn(
   return nextState;
 }
 
+async function recordTechnicalFailureOutcome(callSid: string, transcript: ConversationTurn[]) {
+  try {
+    await db.phoneVerificationAttempt.updateMany({
+      where: { providerCallSid: callSid },
+      data: {
+        status: "COMPLETED",
+        completedAt: new Date(),
+        outcome: "NEEDS_FOLLOWUP_TECHNICAL_ERROR",
+        transcript: transcript as unknown as Prisma.InputJsonValue,
+      },
+    });
+  } catch (err) {
+    console.error(`[voice-agent] failed to record technical-failure outcome for call ${callSid}:`, err);
+  }
+}
+
 export async function handleConversationRelayConnection(socket: WebSocket, token: string): Promise<void> {
   let callSid: string | null = null;
   let callSession: CallSession | null = null;
@@ -68,6 +121,7 @@ export async function handleConversationRelayConnection(socket: WebSocket, token
   const turnHistory: ConversationTurn[] = [OPENING_TURN];
   const transcript: ConversationTurn[] = [];
   let resolved = false;
+  const failureState = { consecutiveFailures: 0 };
 
   socket.on("message", (data) => {
     void (async () => {
@@ -102,7 +156,16 @@ export async function handleConversationRelayConnection(socket: WebSocket, token
 
           // The opening turn: Claude delivers the greeting with no customer
           // input yet, per the self-transition rule in buildFullSystemPrompt.
-          const nextState = await runTurn(socket, currentState, callSession, callSid, turnHistory, transcript);
+          const nextState = await runTurn(socket, currentState, callSession, callSid, turnHistory, transcript, failureState);
+
+          if (nextState === FORCE_END) {
+            resolved = true;
+            await recordTechnicalFailureOutcome(callSid, transcript);
+            send(socket, { type: "end" });
+            socket.close();
+            return;
+          }
+
           if (!isTerminalState(nextState)) {
             currentState = nextState as ConversationStateId;
           }
@@ -118,7 +181,15 @@ export async function handleConversationRelayConnection(socket: WebSocket, token
           turnHistory.push({ role: "user", content: message.voicePrompt });
           transcript.push({ role: "user", content: message.voicePrompt });
 
-          const nextState = await runTurn(socket, currentState, callSession, callSid, turnHistory, transcript);
+          const nextState = await runTurn(socket, currentState, callSession, callSid, turnHistory, transcript, failureState);
+
+          if (nextState === FORCE_END) {
+            resolved = true;
+            await recordTechnicalFailureOutcome(callSid, transcript);
+            send(socket, { type: "end" });
+            socket.close();
+            return;
+          }
 
           if (isTerminalState(nextState)) {
             resolved = true;
@@ -142,6 +213,17 @@ export async function handleConversationRelayConnection(socket: WebSocket, token
         }
       } catch (err) {
         console.error(`[voice-agent] error handling ${message.type} for call ${callSid ?? "unknown"}:`, err);
+        // Last-resort safety net -- every specific failure path above
+        // already speaks an apology and ends cleanly, but if something
+        // genuinely unexpected throws here, the customer must still never
+        // be left in silence for the rest of the call.
+        if (!resolved && callSid) {
+          resolved = true;
+          send(socket, { type: "text", token: API_ERROR_REPLY, last: true });
+          await recordTechnicalFailureOutcome(callSid, transcript);
+          send(socket, { type: "end" });
+          socket.close();
+        }
       }
     })();
   });

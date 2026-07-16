@@ -26,3 +26,6 @@ coverage/
 
 # Local Netlify folder
 .netlify
+
+# Netlify CLI's Deno-based edge-functions bundling artifact
+deno.lock
