@@ -17,7 +17,9 @@ function buildFullSystemPrompt(definition: StateDefinition, ctx: StateContext): 
   const corePrompt = definition.buildSystemPrompt(ctx);
   return `${corePrompt}
 
-You must call advance_conversation exactly once per turn. If you have not yet received a clear, unambiguous answer to what you just asked -- including if this is the very first turn of the call and you have not asked anything yet -- set next_state to "${definition.id}" (stay here) and use reply_text to ask or re-ask the question. Only choose one of the other transitions named above once you have a clear answer.`;
+You must call advance_conversation exactly once per turn. If you have not yet received a clear, unambiguous answer to what you just asked -- including if this is the very first turn of the call and you have not asked anything yet -- set next_state to "${definition.id}" (stay here) and use reply_text to ask or re-ask the question. Only choose one of the other transitions named above once you have a clear answer.
+
+Never end reply_text with a bare statement like "we will now move on" or "let's continue" with no question attached -- a real customer on the phone has no way to know a response is expected unless you explicitly ask for one. Every reply_text must end with a direct, answerable question (e.g. "Is that all correct?", "Are you happy to continue?"), never a narration of what happens next.`;
 }
 
 function extractToolInput(response: Anthropic.Message): AdvanceConversationToolInput | null {

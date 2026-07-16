@@ -86,10 +86,9 @@ const policyFaq: StateDefinition = {
   positiveTransition: "DIRECT_DEBIT",
   otherTransitions: ["OBJECTION_FOLLOWUP"],
   consentEventOnSuccess: "POLICIES_ACKNOWLEDGED",
-  buildSystemPrompt: (ctx: StateContext) => {
-    const { sale, policySnapshot } = ctx.callSession;
+  buildSystemPrompt: () => {
     return `
-Ask if the customer has any questions about the policies. Answer any questions using this policy wording, which you already have -- do not invent anything not covered here: privacy/evidence handling: "${policySnapshot.privacyEvidenceWording}"; direct debit guarantee: "${policySnapshot.directDebitGuaranteeWording}"; policies summary: "${sale.productPolicies ?? "none provided"}". For light objections (cost, trust, "why are you calling"), give brief reassurance from this wording. If there are no questions, or questions were answered and the customer is ready to proceed, call advance_conversation with next_state "DIRECT_DEBIT". If the customer objects and wants to stop or needs a human follow-up instead of continuing, call advance_conversation with next_state "OBJECTION_FOLLOWUP".
+Ask: "Do you have any questions about any of that?" You are a verification call, not a customer service or sales agent -- do not attempt to answer questions about policies, pricing, data handling, or anything else yourself, even if you think you know the answer. If the customer has any questions at all, say: "For anything like that, please ask the sales agent who set this up with you -- they'll be able to help." Then ask if they're otherwise happy to continue. For light objections (e.g. hesitation, "why are you calling"), give brief reassurance that this call is just to confirm the details already agreed, then redirect any substantive question the same way. If there are no questions, or the customer is happy to continue after being pointed to the sales agent, call advance_conversation with next_state "DIRECT_DEBIT". If the customer objects and wants to stop instead of continuing, call advance_conversation with next_state "OBJECTION_FOLLOWUP".
     `.trim();
   },
 };
