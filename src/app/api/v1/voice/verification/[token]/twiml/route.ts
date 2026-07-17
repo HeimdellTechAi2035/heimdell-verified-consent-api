@@ -9,6 +9,7 @@ import {
   buildVerificationScriptTwiml,
   buildInvalidRequestTwiml,
   buildConversationRelayTwiml,
+  buildIdentityGreetingText,
 } from "@/lib/voice-twiml";
 
 function xmlResponse(xml: string, status = 200) {
@@ -48,7 +49,10 @@ export async function POST(
   // below completely unchanged.
   if (process.env.VOICE_AGENT_ENABLED === "true" && process.env.VOICE_AGENT_WS_URL) {
     const wsBase = process.env.VOICE_AGENT_WS_URL.replace(/\/$/, "");
-    return xmlResponse(buildConversationRelayTwiml({ wsUrl: `${wsBase}/call/${token}` }));
+    const welcomeGreeting = buildIdentityGreetingText(data.customer.full_name, data.product.name);
+    return xmlResponse(
+      buildConversationRelayTwiml({ wsUrl: `${wsBase}/call/${token}`, welcomeGreeting })
+    );
   }
 
   const gatherActionUrl = buildCanonicalTwilioUrl(req).replace("/twiml", "/gather");

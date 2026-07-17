@@ -1,6 +1,7 @@
 import type { Prisma } from "@prisma/client";
 import type { WebSocket } from "ws";
 import { db } from "@/lib/db";
+import { buildIdentityGreetingText } from "@/lib/voice-twiml";
 import { bootstrapCallSession, type CallSession } from "../session/session-bootstrap";
 import { recordLiveConsentEvent } from "../consent-events";
 import { advanceConversationTurn, getStateDefinition } from "../states/state-machine";
@@ -8,10 +9,11 @@ import { handleTerminalOutcome } from "../states/terminal-outcomes";
 import { isTerminalState, type ConversationStateId, type ConversationTurn, type TerminalStateId } from "../states/types";
 import { parseInboundMessage, serializeOutboundMessage, type InboundMessage } from "./protocol";
 
-const OPENING_TURN: ConversationTurn = {
-  role: "user",
-  content: "[Call connected. Begin the conversation now.]",
-};
+// Appended by code, not asked by Claude -- a real test call showed the
+// model omitting this at least one transition out of several, since a
+// soft "always include this" prompt instruction isn't 100% reliable.
+// Generating it here instead guarantees it's said every single time.
+const READINESS_QUESTION = "Are you ready to proceed?";
 
 const FALLBACK_REPLY = "Sorry, could you say that again?";
 const API_ERROR_REPLY =
@@ -117,9 +119,12 @@ async function runChainedTurns(
 ): Promise<ChainResult> {
   const outcome = await runSingleTurn(startState, callSession, callSid, turnHistory, failureState);
 
-  turnHistory.push({ role: "assistant", content: outcome.replyText });
-  transcript.push({ role: "assistant", content: outcome.replyText });
-  send(socket, { type: "text", token: outcome.replyText, last: true });
+  const spokenText =
+    outcome.status === "advance" ? `${outcome.replyText} ${READINESS_QUESTION}` : outcome.replyText;
+
+  turnHistory.push({ role: "assistant", content: spokenText });
+  transcript.push({ role: "assistant", content: spokenText });
+  send(socket, { type: "text", token: spokenText, last: true });
 
   if (outcome.status === "force_end") {
     return { kind: "force_end" };
@@ -152,11 +157,21 @@ export async function handleConversationRelayConnection(socket: WebSocket, token
   let callSid: string | null = null;
   let callSession: CallSession | null = null;
   let currentState: ConversationStateId = "IDENTITY_CHECK";
-  const turnHistory: ConversationTurn[] = [OPENING_TURN];
+  const turnHistory: ConversationTurn[] = [];
   const transcript: ConversationTurn[] = [];
   let resolved = false;
   let turnInProgress = false;
   const failureState = { consecutiveFailures: 0 };
+  // A real test call showed the SAME assistant reply generated twice in a
+  // row, each following its own separate "[user] Yes." -- proof that Twilio
+  // can deliver a genuine duplicate final transcript for one utterance
+  // AFTER the first delivery's turn has already completed, outside the
+  // turnInProgress mutex's protection window. Guard against that
+  // separately, by content: if the next prompt's text matches the last one
+  // actually processed, within a short window, treat it as a duplicate
+  // delivery and drop it rather than running a second identical turn.
+  let lastProcessedPrompt: { text: string; at: number } | null = null;
+  const DUPLICATE_PROMPT_WINDOW_MS = 8_000;
   // Twilio has been observed sending a "prompt" before "setup" has finished
   // processing (a real race, seen on a live call, that silently dropped
   // the customer's first utterance and then the whole connection died) --
@@ -201,6 +216,18 @@ export async function handleConversationRelayConnection(socket: WebSocket, token
       return;
     }
 
+    const normalized = voicePrompt.trim().toLowerCase();
+    const now = Date.now();
+    if (
+      lastProcessedPrompt &&
+      lastProcessedPrompt.text === normalized &&
+      now - lastProcessedPrompt.at < DUPLICATE_PROMPT_WINDOW_MS
+    ) {
+      console.log(`[voice-agent] dropping duplicate prompt (same text within ${DUPLICATE_PROMPT_WINDOW_MS}ms) for call ${callSid}: ${voicePrompt}`);
+      return;
+    }
+    lastProcessedPrompt = { text: normalized, at: now };
+
     turnInProgress = true;
     turnHistory.push({ role: "user", content: voicePrompt });
     transcript.push({ role: "user", content: voicePrompt });
@@ -234,15 +261,17 @@ export async function handleConversationRelayConnection(socket: WebSocket, token
         data: { status: "IN_PROGRESS", answeredAt: new Date() },
       });
 
-      // The opening turn: Claude delivers the greeting (and chains straight
-      // into identity confirmation logic) with no customer input yet, per
-      // the self-transition rule in buildFullSystemPrompt.
-      turnInProgress = true;
-      try {
-        await handleChain(currentState);
-      } finally {
-        turnInProgress = false;
-      }
+      // The opening greeting is spoken by Twilio itself via the
+      // ConversationRelay welcomeGreeting attribute (see voice-twiml.ts) --
+      // instantly, with no DB/Claude round trip in the way -- so there is
+      // nothing for the WS handler to send here. Record it in the
+      // transcript for the compliance record, then just wait for the
+      // customer's real reply like any other turn.
+      const greeting = buildIdentityGreetingText(
+        callSession.sale.customerName,
+        callSession.sale.productName
+      );
+      transcript.push({ role: "assistant", content: greeting });
 
       // Drain anything that arrived before setup finished.
       while (!resolved && queuedPrompts.length > 0) {

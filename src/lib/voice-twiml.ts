@@ -165,10 +165,34 @@ export function buildAlreadyResolvedTwiml(
   );
 }
 
+/**
+ * The literal opening line spoken by Twilio's welcomeGreeting for the
+ * conversational voice agent, before the WS server or Claude are involved
+ * at all. Shared (via relative import) with voice-agent-service's
+ * IDENTITY_CHECK prompt, which tells Claude this exact text was already
+ * spoken -- keeping both in one place means they can't drift apart.
+ */
+export function buildIdentityGreetingText(customerName: string, productName: string): string {
+  return (
+    `This call is being recorded as proof of your agreement. ` +
+    `Hi, is that ${customerName}? I'm calling about your signup for ${productName}. It'll take about 5 minutes.`
+  );
+}
+
 export type ConversationRelayTwimlParams = {
   wsUrl: string;
   voice?: string;
   language?: string;
+  /**
+   * Spoken by Twilio itself the moment the WebSocket connects, with no
+   * round trip to the voice-agent-service (DB lookup + Claude call) in the
+   * critical path. A real test call showed multi-second dead air on pickup
+   * when the opening line depended on that round trip instead -- the
+   * customer heard nothing until they spoke first. Omit to fall back to
+   * ConversationRelay's own default (silence until the WS server sends the
+   * first "text" message).
+   */
+  welcomeGreeting?: string;
 };
 
 /**
@@ -180,9 +204,12 @@ export type ConversationRelayTwimlParams = {
 export function buildConversationRelayTwiml(params: ConversationRelayTwimlParams): string {
   const voice = params.voice ?? "en-GB-Standard-A";
   const language = params.language ?? "en-GB";
+  const welcomeGreetingAttr = params.welcomeGreeting
+    ? ` welcomeGreeting="${escapeXml(params.welcomeGreeting)}"`
+    : "";
   return (
     `<?xml version="1.0" encoding="UTF-8"?><Response><Connect>` +
-    `<ConversationRelay url="${escapeXml(params.wsUrl)}" voice="${escapeXml(voice)}" language="${escapeXml(language)}" />` +
+    `<ConversationRelay url="${escapeXml(params.wsUrl)}" voice="${escapeXml(voice)}" language="${escapeXml(language)}"${welcomeGreetingAttr} />` +
     `</Connect></Response>`
   );
 }

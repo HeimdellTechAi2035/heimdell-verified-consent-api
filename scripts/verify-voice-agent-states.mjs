@@ -13,7 +13,7 @@ import ts from "typescript";
 
 const require = createRequire(import.meta.url);
 
-function loadTsModule(path) {
+function loadTsModule(path, mocks = {}) {
   const source = readFileSync(path, "utf8");
   const transpiled = ts.transpileModule(source, {
     compilerOptions: {
@@ -24,15 +24,19 @@ function loadTsModule(path) {
   }).outputText;
 
   const module = { exports: {} };
+  const localRequire = (specifier) => mocks[specifier] ?? require(specifier);
   const execute = new Function("require", "module", "exports", transpiled);
-  execute(require, module, module.exports);
+  execute(localRequire, module, module.exports);
   return module.exports;
 }
 
 const { CONVERSATION_STATE_IDS, TERMINAL_STATE_IDS, isTerminalState } = loadTsModule(
   "voice-agent-service/src/states/types.ts"
 );
-const { STATE_DEFINITIONS } = loadTsModule("voice-agent-service/src/states/definitions.ts");
+const voiceTwiml = loadTsModule("src/lib/voice-twiml.ts");
+const { STATE_DEFINITIONS } = loadTsModule("voice-agent-service/src/states/definitions.ts", {
+  "@/lib/voice-twiml": voiceTwiml,
+});
 
 const ALL_STATE_IDS = new Set([...CONVERSATION_STATE_IDS, ...TERMINAL_STATE_IDS]);
 

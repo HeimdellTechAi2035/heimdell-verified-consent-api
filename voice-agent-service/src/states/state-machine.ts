@@ -19,7 +19,7 @@ function buildFullSystemPrompt(definition: StateDefinition, ctx: StateContext): 
 
 You must call advance_conversation exactly once per turn. If you have not yet received a clear, unambiguous answer to what you just asked -- including if this is the very first turn of the call and you have not asked anything yet -- set next_state to "${definition.id}" (stay here) and use reply_text to ask or re-ask the question. Only choose one of the other transitions named above once you have a clear answer.
 
-If next_state is DIFFERENT from "${definition.id}" (a genuine move to a new topic, not re-asking something within this same topic): briefly acknowledge what was just confirmed, then end reply_text with a short, clear readiness question such as "Are you ready to proceed?" -- do not ask the new topic's specific question yet, that happens on your next turn once they've confirmed. If next_state is "${definition.id}" (you are staying on this same topic, asking again or continuing to work through it), just ask your normal question directly -- no separate readiness question needed there.`;
+If next_state is DIFFERENT from "${definition.id}" (a genuine move to a new topic), briefly acknowledge what was just confirmed in reply_text -- do not ask the new topic's specific question yet, that happens on your next turn. A readiness question is appended automatically after your reply_text when this happens, so do not add your own "are you ready?" or "shall we continue?" -- that would ask it twice.`;
 }
 
 function extractToolInput(response: Anthropic.Message): AdvanceConversationToolInput | null {

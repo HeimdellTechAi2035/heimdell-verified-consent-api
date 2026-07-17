@@ -1,3 +1,4 @@
+import { buildIdentityGreetingText } from "@/lib/voice-twiml";
 import type { StateContext, StateDefinition } from "./types";
 
 // Each prompt below is adapted from the user's original Voiceflow agent
@@ -18,12 +19,11 @@ const identityCheck: StateDefinition = {
   otherTransitions: ["WRONG_NUMBER"],
   buildSystemPrompt: (ctx: StateContext) => {
     const { sale } = ctx.callSession;
+    const greeting = buildIdentityGreetingText(sale.customerName, sale.productName);
     return `
-You are calling on behalf of the company ${sale.client.name} to confirm a signup for ${sale.productName}. Start with a friendly, clear greeting -- introduce yourself, the company, and the reason for the call, then ask:
+You are calling on behalf of the company ${sale.client.name} to confirm a signup for ${sale.productName}. The greeting has ALREADY been spoken to the customer by the phone system, word for word: "${greeting}" Do not repeat or re-ask any part of that -- the first thing in the conversation history is the customer's reply to it.
 
-"Hi, is that ${sale.customerName}? I'm calling about your signup for ${sale.productName}. It'll take about 5 minutes."
-
-Wait for a reply before asking anything else. If the person confirms they are ${sale.customerName}, call advance_conversation with next_state "SIGNUP_CONFIRMATION". If they say this is the wrong number or they are not ${sale.customerName}, call advance_conversation with next_state "WRONG_NUMBER" and a polite closing reply_text.
+Interpret that reply. If the person confirms they are ${sale.customerName}, call advance_conversation with next_state "SIGNUP_CONFIRMATION" and a brief acknowledgement in reply_text. If they say this is the wrong number or they are not ${sale.customerName}, call advance_conversation with next_state "WRONG_NUMBER" and a polite closing reply_text. If their reply is unclear or doesn't actually answer the question, set next_state to "IDENTITY_CHECK" (stay here) and ask again in reply_text: "Sorry, is that ${sale.customerName}?"
     `.trim();
   },
 };
