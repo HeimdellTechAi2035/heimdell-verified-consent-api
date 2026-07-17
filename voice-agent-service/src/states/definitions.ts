@@ -99,9 +99,18 @@ const termsUnderstanding: StateDefinition = {
   otherTransitions: ["TERMS_NOT_UNDERSTOOD_FOLLOWUP"],
   consentEventOnSuccess: "TERMS_ACKNOWLEDGED",
   buildSystemPrompt: (ctx: StateContext) => {
-    const { policySnapshot } = ctx.callSession;
+    const { sale, policySnapshot } = ctx.callSession;
+    const sellerTerms = sale.productTerms?.trim();
     return `
-Summarise the terms and conditions in plain language: "${policySnapshot.termsAndConditions}" -- also mention the cooling-off policy: "${policySnapshot.coolingOffPolicy}". Ask if they understand. If not, explain again more simply using the same wording, focusing on billing, cancellation ("${policySnapshot.cancellationInstructions}"), and refunds. If they now understand, call advance_conversation with next_state "POLICY_FAQ". If they still do not understand after one re-explanation, call advance_conversation with next_state "TERMS_NOT_UNDERSTOOD_FOLLOWUP".
+If you have not yet read the terms in this call, read the following to the customer WORD FOR WORD, exactly as written below -- do not paraphrase, summarise, shorten, or reword any of it, even slightly:
+${sellerTerms ? `"${sellerTerms}"\n` : ""}"${policySnapshot.termsAndConditions}"
+"${policySnapshot.coolingOffPolicy}"
+
+Then ask if they understand.
+
+If you have already read that in an earlier turn this call, do not read it again -- just continue this conversation about it.
+
+If they say they don't understand, you may now explain what you just read in simpler, plainer language -- this clarification does NOT need to be word-for-word -- focusing on billing, cancellation ("${policySnapshot.cancellationInstructions}"), and refunds. If they now understand, call advance_conversation with next_state "POLICY_FAQ". If they still do not understand after one simplified re-explanation, call advance_conversation with next_state "TERMS_NOT_UNDERSTOOD_FOLLOWUP".
     `.trim();
   },
 };
@@ -111,9 +120,18 @@ const policyFaq: StateDefinition = {
   positiveTransition: "DIRECT_DEBIT",
   otherTransitions: ["OBJECTION_FOLLOWUP"],
   consentEventOnSuccess: "POLICIES_ACKNOWLEDGED",
-  buildSystemPrompt: () => {
+  buildSystemPrompt: (ctx: StateContext) => {
+    const { sale, policySnapshot } = ctx.callSession;
+    const sellerPolicies = sale.productPolicies?.trim();
     return `
-Ask: "Do you have any questions about any of that?" You are a verification call, not a customer service or sales agent -- do not attempt to answer questions about policies, pricing, data handling, or anything else yourself, even if you think you know the answer. If the customer has any questions at all, say: "For anything like that, please ask the sales agent who set this up with you -- they'll be able to help." Then ask if they're otherwise happy to continue. For light objections (e.g. hesitation, "why are you calling"), give brief reassurance that this call is just to confirm the details already agreed, then redirect any substantive question the same way. If there are no questions, or the customer is happy to continue after being pointed to the sales agent, call advance_conversation with next_state "DIRECT_DEBIT". If the customer objects and wants to stop instead of continuing, call advance_conversation with next_state "OBJECTION_FOLLOWUP".
+If you have not yet read the policies in this call, read the following to the customer WORD FOR WORD, exactly as written below -- do not paraphrase, summarise, shorten, or reword any of it, even slightly:
+${sellerPolicies ? `"${sellerPolicies}"\n` : ""}"${policySnapshot.directDebitGuaranteeWording}"
+
+Then ask: "Do you have any questions about any of that?"
+
+If you have already read that in an earlier turn this call, do not read it again -- just continue this conversation about it.
+
+You are a verification call, not a customer service or sales agent -- do not attempt to answer questions about policies, pricing, data handling, or anything else yourself, even if you think you know the answer. If the customer has any questions at all, say: "For anything like that, please ask the sales agent who set this up with you -- they'll be able to help." Then ask if they're otherwise happy to continue. For light objections (e.g. hesitation, "why are you calling"), give brief reassurance that this call is just to confirm the details already agreed, then redirect any substantive question the same way. If there are no questions, or the customer is happy to continue after being pointed to the sales agent, call advance_conversation with next_state "DIRECT_DEBIT". If the customer objects and wants to stop instead of continuing, call advance_conversation with next_state "OBJECTION_FOLLOWUP".
     `.trim();
   },
 };
@@ -136,18 +154,16 @@ There is no Direct Debit mandate on file for this sale. Say: "It looks like I do
     return `
 You are verifying a Direct Debit mandate that was already set up at signup -- you are not collecting new payment details, only confirming what's on file. Never ask for or state a full account number -- you only ever have the last two digits, never the full number.
 
-This is three separate confirmations, one per turn -- ask one, wait for a clear answer, then move to the next. Only ever include ONE corrections entry per turn, and never include a bank name or sort code correction you haven't read back and had the customer confirm as accurate first:
+This covers three details in order, all within this same state (next_state stays "DIRECT_DEBIT" until the very last step). CRITICAL RULE: whenever you move from one detail to the next, put your acknowledgment AND the next question in the SAME reply_text, as one continuous thing to say. NEVER acknowledge an answer and then stop and wait for another turn before asking the next question -- that leaves dead air on a phone call. Only ever include ONE corrections entry per turn, and never include a bank name or sort code correction you haven't read back and had the customer confirm as accurate first.
 
-1. Say: "For security, I just need to confirm a few details already provided when you signed up. I have the bank listed as ${dd.bankName}. Is that correct?"
-   - If confirmed, move to the next confirmation on your following turn (stay in this state, no captured_data).
-   - If not: ask what the correct bank name is, read it back to confirm, and once they've confirmed it, move to the next confirmation with captured_data: { corrections: [{ field: "bankName", value: "<corrected bank name>" }] }.
+1. Bank name -- if you haven't asked this yet this call, say: "For security, I just need to confirm a few details already provided when you signed up. I have the bank listed as ${dd.bankName}. Is that correct?" (next_state "DIRECT_DEBIT", wait for their answer).
+   - Once confirmed: in that SAME turn's reply_text, acknowledge AND immediately ask the sort code question too -- e.g. "Great, thank you. And the sort code as ${spokenSortCode} -- is that correct?" (next_state stays "DIRECT_DEBIT", no captured_data). Say the sort code EXACTLY as written above, with a distinct pause between each pair of digits -- never run it together as one number.
+   - If they say the bank name is wrong: ask what it should be, read it back to confirm. Once THAT is confirmed, in that same reply_text, acknowledge AND immediately ask the sort code question too, with captured_data: { corrections: [{ field: "bankName", value: "<corrected bank name>" }] }.
 
-2. Ask: "And the sort code as ${spokenSortCode}. Is that correct?" Say the sort code EXACTLY as written above, with a distinct pause between each pair of digits -- never run it together as one number.
-   - If confirmed, move to the next confirmation on your following turn (stay in this state, no captured_data).
-   - If not: ask what the correct sort code is, read it back digit-pair by digit-pair to confirm, and once they've confirmed it, move to the next confirmation with captured_data: { corrections: [{ field: "sortCode", value: "<6 digits only, no spaces or dashes>" }] }.
+2. Sort code -- once confirmed (as originally listed, or after a correction): in that SAME turn's reply_text, acknowledge AND immediately ask the account number question too -- e.g. "Perfect. And the account number ending in ${lastTwoDigits} -- is that correct?" (next_state stays "DIRECT_DEBIT", no captured_data).
+   - If they say the sort code is wrong: ask what it should be, read it back digit-pair by digit-pair to confirm. Once THAT is confirmed, in that same reply_text, acknowledge AND immediately ask the account number question too, with captured_data: { corrections: [{ field: "sortCode", value: "<6 digits only, no spaces or dashes>" }] }.
 
-3. Ask: "And the account number ending in ${lastTwoDigits}. Is that correct?"
-   - If confirmed, call advance_conversation with next_state "EXPLICIT_AGREEMENT".
+3. Account number -- once confirmed, call advance_conversation with next_state "EXPLICIT_AGREEMENT".
    - If not, or they seem unsure: say something like "No problem, I'll flag this for our team to follow up on directly" -- never ask for or accept a full account number over the phone -- then call advance_conversation with next_state "DD_MISMATCH_FOLLOWUP", optionally with captured_data: { corrections: [{ field: "accountNumberLast4", value: "<whatever they say it should end in, if they give one>" }] }.
     `.trim();
   },
