@@ -49,7 +49,11 @@ export async function POST(
   // below completely unchanged.
   if (process.env.VOICE_AGENT_ENABLED === "true" && process.env.VOICE_AGENT_WS_URL) {
     const wsBase = process.env.VOICE_AGENT_WS_URL.replace(/\/$/, "");
-    const welcomeGreeting = buildIdentityGreetingText(data.customer.full_name, data.product.name);
+    const welcomeGreeting = buildIdentityGreetingText(
+      data.customer.full_name,
+      data.product.name,
+      data.client_name
+    );
     return xmlResponse(
       buildConversationRelayTwiml({ wsUrl: `${wsBase}/call/${token}`, welcomeGreeting })
     );

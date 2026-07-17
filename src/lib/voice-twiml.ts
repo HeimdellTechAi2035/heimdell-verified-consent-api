@@ -172,10 +172,15 @@ export function buildAlreadyResolvedTwiml(
  * IDENTITY_CHECK prompt, which tells Claude this exact text was already
  * spoken -- keeping both in one place means they can't drift apart.
  */
-export function buildIdentityGreetingText(customerName: string, productName: string): string {
+export function buildIdentityGreetingText(
+  customerName: string,
+  productName: string,
+  clientName: string
+): string {
   return (
     `This call is being recorded as proof of your agreement. ` +
-    `Hi, is that ${customerName}? I'm calling about your signup for ${productName}. It'll take about 5 minutes.`
+    `Hello, this is a call on behalf of ${clientName} regarding a signup for ${productName}. ` +
+    `It'll take about 5 minutes. Is that ${customerName}?`
   );
 }
 

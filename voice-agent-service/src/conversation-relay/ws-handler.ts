@@ -269,7 +269,8 @@ export async function handleConversationRelayConnection(socket: WebSocket, token
       // customer's real reply like any other turn.
       const greeting = buildIdentityGreetingText(
         callSession.sale.customerName,
-        callSession.sale.productName
+        callSession.sale.productName,
+        callSession.sale.client.name
       );
       transcript.push({ role: "assistant", content: greeting });
 

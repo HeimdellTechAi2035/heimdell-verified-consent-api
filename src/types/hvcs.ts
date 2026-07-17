@@ -67,6 +67,7 @@ export type SessionLookupData = {
   status: string;
   expires_at: Date;
   opened_at: Date | null;
+  client_name: string;
   customer: {
     full_name: string;
     phone: string;

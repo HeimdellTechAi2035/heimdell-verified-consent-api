@@ -13,13 +13,26 @@ function frequencySuffix(frequency: string | null) {
   return frequency ? ` ${frequency}` : "";
 }
 
+/**
+ * Sort codes are stored as a plain 6-digit string with no separators. Read
+ * as one number ("601949"), Twilio's TTS collapses it into a single large
+ * number instead of the customer's actual sort code. UK sort codes are
+ * always spoken in pairs ("sixty, nineteen, forty-nine"), so the pairs are
+ * spelled out as separate words here to force that grouping regardless of
+ * how the TTS engine would otherwise parse a bare digit string.
+ */
+function formatSortCodeForSpeech(sortCode: string): string {
+  const pairs = sortCode.match(/\d{2}/g) ?? [sortCode];
+  return pairs.join(", ");
+}
+
 const identityCheck: StateDefinition = {
   id: "IDENTITY_CHECK",
   positiveTransition: "SIGNUP_CONFIRMATION",
   otherTransitions: ["WRONG_NUMBER"],
   buildSystemPrompt: (ctx: StateContext) => {
     const { sale } = ctx.callSession;
-    const greeting = buildIdentityGreetingText(sale.customerName, sale.productName);
+    const greeting = buildIdentityGreetingText(sale.customerName, sale.productName, sale.client.name);
     return `
 You are calling on behalf of the company ${sale.client.name} to confirm a signup for ${sale.productName}. The greeting has ALREADY been spoken to the customer by the phone system, word for word: "${greeting}" Do not repeat or re-ask any part of that -- the first thing in the conversation history is the customer's reply to it.
 
@@ -107,6 +120,7 @@ There is no Direct Debit mandate on file for this sale. Say: "It looks like I do
     }
 
     const lastTwoDigits = dd.accountNumberLast4.slice(-2);
+    const spokenSortCode = formatSortCodeForSpeech(dd.sortCode);
     return `
 You are verifying a Direct Debit mandate that was already set up at signup -- you are not collecting new payment details, only confirming what's on file. Never ask for or state a full account number -- you only ever have the last two digits, never the full number.
 
@@ -114,7 +128,7 @@ This is three separate confirmations, one per turn -- ask one, wait for a clear 
 
 1. Say: "For security, I just need to confirm a few details already provided when you signed up. I have the bank listed as ${dd.bankName}. Is that correct?" If confirmed, move to the next confirmation on your following turn. If not, call advance_conversation with next_state "DD_MISMATCH_FOLLOWUP".
 
-2. Ask: "And the sort code as ${dd.sortCode}. Is that correct?" If confirmed, move to the next confirmation on your following turn. If not, call advance_conversation with next_state "DD_MISMATCH_FOLLOWUP".
+2. Ask: "And the sort code as ${spokenSortCode}. Is that correct?" Say the sort code EXACTLY as written above, with a distinct pause between each pair of digits -- never run it together as one number. If confirmed, move to the next confirmation on your following turn. If not, call advance_conversation with next_state "DD_MISMATCH_FOLLOWUP".
 
 3. Ask: "And the account number ending in ${lastTwoDigits}. Is that correct?" If confirmed, call advance_conversation with next_state "EXPLICIT_AGREEMENT". If they say it's not correct, or seem unsure, call advance_conversation with next_state "DD_MISMATCH_FOLLOWUP".
     `.trim();

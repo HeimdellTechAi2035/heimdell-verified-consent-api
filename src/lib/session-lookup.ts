@@ -41,6 +41,9 @@ export async function lookupVerificationSession(
               // encryptedAccountNumber intentionally excluded
             },
           },
+          client: {
+            select: { name: true },
+          },
         },
       },
     },
@@ -88,6 +91,7 @@ export async function lookupVerificationSession(
     status,
     expires_at: session.expiresAt,
     opened_at: session.openedAt ?? new Date(),
+    client_name: sale.client.name,
 
     customer: {
       full_name: sale.customerName,
