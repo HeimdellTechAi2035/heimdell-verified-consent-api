@@ -13,16 +13,6 @@ const OPENING_TURN: ConversationTurn = {
   content: "[Call connected. Begin the conversation now.]",
 };
 
-// Used to immediately chain into a new state's own opening line right
-// after a real transition, in the same spoken breath -- not shown in the
-// transcript (nothing was actually said here), only in turnHistory so
-// Claude understands why it's being asked to speak again with no new
-// customer input.
-const CONTINUATION_TURN: ConversationTurn = {
-  role: "user",
-  content: "[Continue -- the customer just answered. Move straight into your next question, no need to ask permission to continue.]",
-};
-
 const FALLBACK_REPLY = "Sorry, could you say that again?";
 const API_ERROR_REPLY =
   "Sorry, I'm having a technical difficulty right now. Someone from our team will follow up with you directly to complete this. Thank you for your time, goodbye.";
@@ -37,13 +27,6 @@ const REPEATED_FAILURE_REPLY =
 // but forces the same clean ending after two in a row, rather than looping
 // indefinitely.
 const MAX_CONSECUTIVE_SOFT_FAILURES = 2;
-
-// Caps how many states advance_conversation can chain through in one
-// customer turn (see runChainedTurns below) -- a safety valve against any
-// pathological run of states that all transition immediately with no real
-// question, so a single customer utterance can never cause an unbounded
-// run of Claude calls.
-const MAX_CHAIN_HOPS = 4;
 
 function send(socket: WebSocket, message: Parameters<typeof serializeOutboundMessage>[0]) {
   socket.send(serializeOutboundMessage(message));
@@ -114,20 +97,14 @@ type ChainResult =
   | { kind: "force_end" };
 
 /**
- * Runs one customer turn, then immediately chains through any number of
- * "advance" transitions (a real move to a new state) without waiting for
- * further customer input -- each chained state's own opening line is
- * spoken right after the previous segment, all as one continuous
- * utterance (only the very last segment is sent with last: true, so
- * Twilio doesn't start listening until the whole thing has been said).
- *
- * This is specifically what fixes "the agent says 'we'll move on' then
- * goes silent": a transition's acknowledgement and the new state's real
- * question used to be split across two separate turns with a customer
- * response expected in between, because each state's system prompt only
- * knows its own content -- IDENTITY_CHECK has no idea what
- * SIGNUP_CONFIRMATION is going to ask, so it can't have generated that
- * question. Chaining runs that next state's turn immediately instead.
+ * Runs exactly one customer turn and sends its reply. Deliberately does
+ * NOT auto-chain into the next state's opening line on a genuine
+ * transition ("advance") -- by explicit product decision, every stage
+ * transition ends with its own "Are you ready to proceed?"-style question
+ * (see the state-machine.ts system prompt) and waits for a real answer,
+ * even though that means an extra round trip per stage. An earlier
+ * version of this function did auto-chain to avoid that round trip, but
+ * was reverted: the user explicitly wants the readiness question kept.
  */
 async function runChainedTurns(
   socket: WebSocket,
@@ -138,43 +115,21 @@ async function runChainedTurns(
   transcript: ConversationTurn[],
   failureState: { consecutiveFailures: number }
 ): Promise<ChainResult> {
-  let state = startState;
-  const segments: string[] = [];
+  const outcome = await runSingleTurn(startState, callSession, callSid, turnHistory, failureState);
 
-  for (let hop = 0; hop < MAX_CHAIN_HOPS; hop++) {
-    const outcome = await runSingleTurn(state, callSession, callSid, turnHistory, failureState);
+  turnHistory.push({ role: "assistant", content: outcome.replyText });
+  transcript.push({ role: "assistant", content: outcome.replyText });
+  send(socket, { type: "text", token: outcome.replyText, last: true });
 
-    turnHistory.push({ role: "assistant", content: outcome.replyText });
-    transcript.push({ role: "assistant", content: outcome.replyText });
-    segments.push(outcome.replyText);
-
-    if (outcome.status === "force_end") {
-      segments.forEach((segment, i) => send(socket, { type: "text", token: segment, last: i === segments.length - 1 }));
-      return { kind: "force_end" };
-    }
-
-    if (outcome.status === "terminal") {
-      segments.forEach((segment, i) => send(socket, { type: "text", token: segment, last: i === segments.length - 1 }));
-      return { kind: "terminal", state: outcome.nextState };
-    }
-
-    state = outcome.nextState;
-
-    if (outcome.status === "continue") {
-      segments.forEach((segment, i) => send(socket, { type: "text", token: segment, last: i === segments.length - 1 }));
-      return { kind: "waiting", state };
-    }
-
-    // status === "advance": chain immediately into the new state's own
-    // opening line, no customer input in between.
-    turnHistory.push(CONTINUATION_TURN);
+  if (outcome.status === "force_end") {
+    return { kind: "force_end" };
   }
 
-  // Hit MAX_CHAIN_HOPS -- stop chaining as a safety valve, speak what's
-  // been said so far, and wait for real customer input rather than risk
-  // an unbounded run of Claude calls on one utterance.
-  segments.forEach((segment, i) => send(socket, { type: "text", token: segment, last: i === segments.length - 1 }));
-  return { kind: "waiting", state };
+  if (outcome.status === "terminal") {
+    return { kind: "terminal", state: outcome.nextState };
+  }
+
+  return { kind: "waiting", state: outcome.nextState };
 }
 
 async function recordTechnicalFailureOutcome(callSid: string, transcript: ConversationTurn[]) {
