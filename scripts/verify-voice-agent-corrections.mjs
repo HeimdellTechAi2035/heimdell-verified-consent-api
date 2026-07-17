@@ -120,6 +120,51 @@ async function run() {
     assert.equal(fake.calls.saleUpdates.at(-1).data.needsReview, true);
   }
 
+  // --- Test 2b: a valid customerEmail correction is applied and lowercased ---
+  {
+    const fake = makeFakeDb();
+    fake.seedSale("sale-2b", null);
+    const corrections = loadTsModule("voice-agent-service/src/corrections.ts", {
+      "@/lib/db": { db: fake.db },
+    });
+
+    await corrections.captureCorrection({
+      saleId: "sale-2b",
+      directDebitMandateId: null,
+      verificationSessionId: "vs-2b",
+      state: "NAME_ADDRESS",
+      field: "customerEmail",
+      oldValue: "old@example.com",
+      rawNewValue: "New.Name@Example.com",
+    });
+
+    assert.equal(fake.calls.saleUpdates.filter((u) => u.data.customerEmail).length, 1, "valid email should be written");
+    assert.equal(fake.calls.saleUpdates.find((u) => u.data.customerEmail).data.customerEmail, "new.name@example.com");
+    assert.equal(fake.calls.consentEvents[0].eventPayload.applied, true);
+  }
+
+  // --- Test 2c: a malformed customerEmail is not applied, but still flagged ---
+  {
+    const fake = makeFakeDb();
+    fake.seedSale("sale-2c", null);
+    const corrections = loadTsModule("voice-agent-service/src/corrections.ts", {
+      "@/lib/db": { db: fake.db },
+    });
+
+    await corrections.captureCorrection({
+      saleId: "sale-2c",
+      directDebitMandateId: null,
+      verificationSessionId: "vs-2c",
+      state: "NAME_ADDRESS",
+      field: "customerEmail",
+      oldValue: "old@example.com",
+      rawNewValue: "not an email",
+    });
+
+    assert.equal(fake.calls.saleUpdates.filter((u) => u.data.customerEmail).length, 0, "malformed email must never be written");
+    assert.equal(fake.calls.consentEvents[0].eventPayload.applied, false);
+  }
+
   // --- Test 3: accountNumberLast4 is flag-only -- never written anywhere ---
   {
     const fake = makeFakeDb();

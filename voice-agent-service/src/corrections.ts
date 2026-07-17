@@ -13,6 +13,7 @@ import type { ConversationStateId } from "./states/types";
 export type CorrectableField =
   | "customerName"
   | "customerAddress"
+  | "customerEmail"
   | "productName"
   | "productFrequency"
   | "productPrice"
@@ -23,6 +24,7 @@ export type CorrectableField =
 const SALE_FIELDS: ReadonlySet<CorrectableField> = new Set([
   "customerName",
   "customerAddress",
+  "customerEmail",
   "productName",
   "productFrequency",
   "productPrice",
@@ -60,6 +62,11 @@ function validateNewValue(field: CorrectableField, rawValue: string): { ok: true
 
   if (field === "productPrice") {
     return /^\d+(\.\d{1,2})?$/.test(trimmed) ? { ok: true, value: trimmed } : { ok: false };
+  }
+
+  if (field === "customerEmail") {
+    const normalized = trimmed.toLowerCase();
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized) ? { ok: true, value: normalized } : { ok: false };
   }
 
   return { ok: true, value: trimmed };
@@ -104,6 +111,9 @@ export async function captureCorrection(params: CaptureCorrectionParams): Promis
           break;
         case "customerAddress":
           await db.sale.update({ where: { id: saleId }, data: { customerAddress: validated.value } });
+          break;
+        case "customerEmail":
+          await db.sale.update({ where: { id: saleId }, data: { customerEmail: validated.value } });
           break;
         case "productName":
           await db.sale.update({ where: { id: saleId }, data: { productName: validated.value } });
@@ -179,6 +189,7 @@ export async function captureCorrection(params: CaptureCorrectionParams): Promis
 const CORRECTABLE_FIELDS: ReadonlySet<CorrectableField> = new Set([
   "customerName",
   "customerAddress",
+  "customerEmail",
   "productName",
   "productFrequency",
   "productPrice",
@@ -222,6 +233,8 @@ function resolveOldValue(sale: CallSession["sale"], field: CorrectableField): st
       return sale.customerName;
     case "customerAddress":
       return sale.customerAddress ?? "";
+    case "customerEmail":
+      return sale.customerEmail ?? "";
     case "productName":
       return sale.productName;
     case "productFrequency":

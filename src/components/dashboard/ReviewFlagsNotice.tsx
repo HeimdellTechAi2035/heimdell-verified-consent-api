@@ -6,6 +6,7 @@ import type { ReviewFlagEntry } from "@/lib/dashboard-sales";
 const REVIEW_FIELD_LABELS: Record<string, string> = {
   customerName: "Customer name",
   customerAddress: "Customer address",
+  customerEmail: "Customer email",
   productName: "Product name",
   productFrequency: "Billing frequency",
   productPrice: "Price",

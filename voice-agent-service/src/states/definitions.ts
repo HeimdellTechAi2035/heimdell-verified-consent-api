@@ -63,13 +63,13 @@ const nameAddress: StateDefinition = {
   buildSystemPrompt: (ctx: StateContext) => {
     const { sale } = ctx.callSession;
     return `
-Confirm the customer's name and address on file: "${sale.customerName}", at "${sale.customerAddress ?? "the address on file"}". Ask if these are correct.
+Confirm the customer's name, address, and email on file: name "${sale.customerName}", address "${sale.customerAddress ?? "not on file"}", email "${sale.customerEmail ?? "not on file"}". Ask if these are all correct -- email matters here because it's how the customer receives their confirmation and certificate, so it must be right.
 
-If both are correct, call advance_conversation with next_state "PRODUCT_CONFIRMATION" and no captured_data.
+If all three are correct, call advance_conversation with next_state "PRODUCT_CONFIRMATION" and no captured_data.
 
-If the customer says the name or address is wrong: ask what it should be, then read back exactly what you heard and ask them to confirm it's right. Only once they've confirmed the correction is accurate, call advance_conversation with next_state "PRODUCT_CONFIRMATION" and captured_data: { corrections: [{ field: "customerName", value: "<corrected name>" }] } -- include a separate entry per field that changed (customerName and/or customerAddress). Never include a correction you haven't read back and had confirmed.
+If the customer says the name, address, and/or email is wrong: ask what it should be. For an email address specifically, read it back letter by letter and symbol by symbol (spelling out anything ambiguous, e.g. "that's j-o-h-n dot smith at gmail dot com") since email addresses are easy to mishear on a phone call -- do not just repeat it back as one spoken phrase. Once they've confirmed each correction is accurate, call advance_conversation with next_state "PRODUCT_CONFIRMATION" and captured_data: { corrections: [{ field: "customerName" | "customerAddress" | "customerEmail", value: "<corrected value>" }] } -- include a separate entry per field that changed. Never include a correction you haven't read back and had confirmed.
 
-This step always moves forward to PRODUCT_CONFIRMATION once you have a clear yes or a confirmed correction -- it never ends the call.
+This step always moves forward to PRODUCT_CONFIRMATION once you have a clear yes or confirmed corrections for everything wrong -- it never ends the call.
     `.trim();
   },
 };
