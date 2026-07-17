@@ -103,6 +103,17 @@ export async function handleTerminalOutcome(params: TerminalOutcomeParams): Prom
         customerEmail: sale.customerEmail ?? null,
         clientWebhookUrl,
         webhookSecret,
+        completedAt: result.completedAt,
+        sale: {
+          customerName: sale.customerName,
+          customerAddress: sale.customerAddress,
+          productName: sale.productName,
+          productPrice: sale.productPrice.toString(),
+          productFrequency: sale.productFrequency,
+          productTerms: sale.productTerms,
+          productPolicies: sale.productPolicies,
+          directDebitMandate: sale.directDebitMandate,
+        },
       });
       await sendCertificateCreatedNotification({
         saleId: sale.id,

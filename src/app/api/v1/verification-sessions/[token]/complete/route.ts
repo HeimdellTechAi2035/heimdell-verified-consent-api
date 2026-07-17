@@ -238,6 +238,17 @@ export async function POST(
     customerEmail: sale.customerEmail ?? null,
     clientWebhookUrl: sale.client.webhookUrl ?? null,
     webhookSecret: sale.client.webhookSecret ?? null,
+    completedAt: result.completedAt,
+    sale: {
+      customerName: sale.customerName,
+      customerAddress: sale.customerAddress,
+      productName: sale.productName,
+      productPrice: sale.productPrice.toString(),
+      productFrequency: sale.productFrequency,
+      productTerms: sale.productTerms,
+      productPolicies: sale.productPolicies,
+      directDebitMandate: sale.directDebitMandate,
+    },
   };
   sendVerificationCompletedNotification(notifyParams).catch((err) =>
     console.error("[complete] completed notification error:", err)

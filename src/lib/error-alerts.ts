@@ -1,10 +1,17 @@
 // Lightweight server-error alerting -- no third-party error tracking
-// service, just an email via the Resend integration already configured
-// for notifications. Debounced in-memory so a burst of the same error
-// (e.g. a DB outage causing every request to fail) sends one alert, not
-// hundreds, matching the debounce style already used in rate-limit.ts.
+// service, just an email via the SMTP integration already configured for
+// notifications. Debounced in-memory so a burst of the same error (e.g. a
+// DB outage causing every request to fail) sends one alert, not hundreds,
+// matching the debounce style already used in rate-limit.ts.
+//
+// instrumentation.ts's onRequestError hook is bundled for BOTH the nodejs
+// and edge runtimes (edge middleware errors go through it too), but
+// notification-providers.ts's nodemailer dependency needs real Node APIs
+// (fs/path/crypto) that don't exist on edge -- a static top-level import
+// broke the edge bundle outright. Importing it dynamically, only once
+// already inside a nodejs-runtime check, is the pattern Next.js documents
+// for exactly this situation.
 
-import { sendEmailNotification } from "@/lib/notification-providers";
 
 const ALERT_RECIPIENT = "andrew@heimdell-tech-ai.co.uk";
 const DEBOUNCE_WINDOW_MS = 15 * 60 * 1000;
@@ -44,6 +51,12 @@ export async function alertOnServerError(params: {
     return;
   }
 
+  if (process.env.NEXT_RUNTIME !== "nodejs") {
+    // Edge middleware errors reach this too, but nodemailer can't run
+    // there -- skip alerting rather than breaking the edge bundle.
+    return;
+  }
+
   const body = [
     `A server error occurred on Heimdell Verified Consent.`,
     ``,
@@ -56,6 +69,12 @@ export async function alertOnServerError(params: {
   ].join("\n");
 
   try {
+    // webpackIgnore is required, not just the NEXT_RUNTIME check above --
+    // without it, webpack still statically resolves this import (and
+    // therefore nodemailer's fs/path/crypto usage) into the edge bundle
+    // at BUILD time regardless of the runtime guard, which only affects
+    // whether the code path executes, not whether it gets bundled.
+    const { sendEmailNotification } = await import(/* webpackIgnore: true */ "@/lib/notification-providers");
     await sendEmailNotification({
       recipient: ALERT_RECIPIENT,
       subject: `Heimdell server error: ${params.routePath ?? "unknown route"}`,

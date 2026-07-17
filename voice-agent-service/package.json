@@ -10,7 +10,7 @@
     "dev": "tsx watch src/server.ts",
     "db:generate": "node scripts/sync-schema.mjs && prisma generate --schema=./prisma/schema.prisma",
     "typecheck": "tsc --noEmit",
-    "build": "esbuild src/server.ts --bundle --platform=node --target=node20 --format=esm --outfile=dist/server.js --tsconfig=tsconfig.json --external:@prisma/client --external:ws --external:@anthropic-ai/sdk --external:bcryptjs --external:nanoid --external:zod",
+    "build": "esbuild src/server.ts --bundle --platform=node --target=node20 --format=esm --outfile=dist/server.js --tsconfig=tsconfig.json --external:@prisma/client --external:ws --external:@anthropic-ai/sdk --external:bcryptjs --external:nanoid --external:zod --external:nodemailer",
     "start": "node dist/server.js",
     "test:conversation": "node scripts/local-fake-twilio-client.mjs"
   },
@@ -19,12 +19,14 @@
     "@prisma/client": "^6.19.3",
     "bcryptjs": "^2.4.3",
     "nanoid": "^5.0.0",
+    "nodemailer": "^9.0.3",
     "ws": "^8.21.0",
     "zod": "^3.23.8"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
     "@types/node": "^20",
+    "@types/nodemailer": "^8.0.1",
     "@types/ws": "^8.18.1",
     "esbuild": "^0.28.1",
     "prisma": "^6.0.0",

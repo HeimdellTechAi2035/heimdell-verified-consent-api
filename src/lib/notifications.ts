@@ -35,6 +35,77 @@ function whatsappEnabled() {
   return process.env.HEIMDELL_ENABLE_WHATSAPP === "true";
 }
 
+function formatPrice(price: string, frequency: string | null): string {
+  const amount = new Intl.NumberFormat("en-GB", {
+    style: "currency",
+    currency: "GBP",
+  }).format(Number(price));
+  return frequency ? `${amount} / ${frequency}` : amount;
+}
+
+/** Never shows more than the last two digits -- consistent with the dashboard and the phone agent, neither of which expose a full sort code either. */
+function maskSortCode(sortCode: string): string {
+  const digits = sortCode.replace(/\D/g, "");
+  return digits.length >= 2 ? `**-**-${digits.slice(-2)}` : "**-**-**";
+}
+
+export type VerificationCompletedSaleSummary = {
+  customerName: string;
+  customerAddress: string | null;
+  productName: string;
+  productPrice: string;
+  productFrequency: string | null;
+  productTerms: string | null;
+  productPolicies: string | null;
+  directDebitMandate: { bankName: string; sortCode: string; accountNumberLast4: string } | null;
+};
+
+/**
+ * Full plain-text summary of exactly what the customer confirmed, for the
+ * completion email -- previously this email said nothing beyond "you're
+ * verified", leaving the customer with no record of what they'd agreed to.
+ * Kept as plain text (no HTML template exists yet, see sendEmailNotification)
+ * but formatted with clear line breaks for readability.
+ */
+function buildCompletionSummaryBody(sale: VerificationCompletedSaleSummary, completedAt: Date): string {
+  const lines: string[] = [
+    "Thank you -- your verification has been completed and securely recorded. Here is a summary of what you confirmed:",
+    "",
+    `Name: ${sale.customerName}`,
+  ];
+
+  if (sale.customerAddress) {
+    lines.push(`Address: ${sale.customerAddress}`);
+  }
+
+  lines.push(`Product: ${sale.productName}`);
+  lines.push(`Price: ${formatPrice(sale.productPrice, sale.productFrequency)}`);
+
+  if (sale.productTerms) {
+    lines.push(`Terms: ${sale.productTerms}`);
+  }
+
+  if (sale.productPolicies) {
+    lines.push(`Policies: ${sale.productPolicies}`);
+  }
+
+  if (sale.directDebitMandate) {
+    const dd = sale.directDebitMandate;
+    lines.push(
+      `Direct Debit: ${dd.bankName}, sort code ${maskSortCode(dd.sortCode)}, account ending ${dd.accountNumberLast4}`
+    );
+  }
+
+  lines.push("");
+  lines.push(
+    `Completed: ${completedAt.toLocaleString("en-GB", { dateStyle: "long", timeStyle: "short", timeZone: "Europe/London" })}`
+  );
+  lines.push("");
+  lines.push("If any of this is incorrect, please contact the provider you signed up with.");
+
+  return lines.join("\n");
+}
+
 export async function createNotificationLog(
   params: CreateNotificationLogParams
 ): Promise<NotificationResult> {
@@ -310,6 +381,8 @@ export type VerificationCompletedParams = {
   customerEmail: string | null;
   clientWebhookUrl: string | null;
   webhookSecret: string | null;
+  sale: VerificationCompletedSaleSummary;
+  completedAt: Date;
 };
 
 export async function sendVerificationCompletedNotification(
@@ -317,6 +390,9 @@ export async function sendVerificationCompletedNotification(
 ): Promise<NotificationResult[]> {
   const results: NotificationResult[] = [];
   const subject = "Your Heimdell verification is complete";
+  // The email gets the full confirmed-details summary; SMS stays short --
+  // a full breakdown would run to several SMS segments (extra cost per
+  // send) and phones don't render long multi-line text well anyway.
   const body =
     "Your Heimdell verification has been completed and securely recorded.";
 
@@ -328,7 +404,7 @@ export async function sendVerificationCompletedNotification(
         recipient: params.customerEmail,
         notificationType: "verification.completed",
         subject,
-        messageBody: body,
+        messageBody: buildCompletionSummaryBody(params.sale, params.completedAt),
         allowRetry: true,
       })
     );

@@ -1,3 +1,5 @@
+import nodemailer, { type Transporter } from "nodemailer";
+
 export type NotificationProviderChannel = "EMAIL" | "SMS" | "WHATSAPP";
 
 export type ProviderSendParams = {
@@ -40,46 +42,64 @@ function missingProvider(provider: string): ProviderSendResult {
   };
 }
 
+// Sends via a real SMTP mailbox (Fasthosts/Livemail, e.g. admin@telecomcompliance.uk)
+// rather than a transactional-email API -- no third-party email provider
+// account exists for this project. The transporter is created once and
+// reused across sends within the same process; if the SMTP env vars are
+// ever changed, the process needs restarting (a Netlify/Railway redeploy)
+// to pick them up.
+let cachedTransporter: Transporter | null = null;
+let cachedTransporterKey: string | null = null;
+
+function getSmtpTransporter(): Transporter | null {
+  const host = process.env.SMTP_HOST;
+  const port = process.env.SMTP_PORT;
+  const user = process.env.SMTP_USER;
+  const pass = process.env.SMTP_PASSWORD;
+
+  if (!host || !port || !user || !pass) {
+    return null;
+  }
+
+  const key = `${host}:${port}:${user}`;
+  if (cachedTransporter && cachedTransporterKey === key) {
+    return cachedTransporter;
+  }
+
+  cachedTransporter = nodemailer.createTransport({
+    host,
+    port: Number(port),
+    // Port 465 is implicit TLS; 587/other ports use STARTTLS instead --
+    // "secure" must be false for those or the handshake fails outright.
+    secure: process.env.SMTP_SECURE ? process.env.SMTP_SECURE === "true" : Number(port) === 465,
+    auth: { user, pass },
+  });
+  cachedTransporterKey = key;
+
+  return cachedTransporter;
+}
+
 export async function sendEmailNotification(
   params: ProviderSendParams
 ): Promise<ProviderSendResult> {
-  const apiKey = process.env.RESEND_API_KEY;
-  const from = process.env.NOTIFICATION_EMAIL_FROM;
+  const transporter = getSmtpTransporter();
+  const from = process.env.NOTIFICATION_EMAIL_FROM ?? process.env.SMTP_USER;
 
-  if (!apiKey || !from) {
+  if (!transporter || !from) {
     return missingProvider("Email");
   }
 
   try {
-    const response = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        from,
-        to: params.recipient,
-        subject: params.subject ?? "Heimdell verification update",
-        text: params.body,
-      }),
+    const info = await transporter.sendMail({
+      from,
+      to: params.recipient,
+      subject: params.subject ?? "Heimdell verification update",
+      text: params.body,
     });
-    const json = (await response.json().catch(() => ({}))) as {
-      id?: string;
-      message?: string;
-    };
-
-    if (response.ok) {
-      return {
-        status: "sent",
-        providerMessageId: json.id ?? `resend_${Date.now()}`,
-      };
-    }
 
     return {
-      status: "failed",
-      reason: json.message ?? `Email provider returned HTTP ${response.status}`,
-      retryable: response.status >= 500 || response.status === 429,
+      status: "sent",
+      providerMessageId: info.messageId || `smtp_${Date.now()}`,
     };
   } catch (error) {
     return {
