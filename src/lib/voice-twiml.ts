@@ -209,12 +209,18 @@ export type ConversationRelayTwimlParams = {
 export function buildConversationRelayTwiml(params: ConversationRelayTwimlParams): string {
   const voice = params.voice ?? "en-GB-Standard-A";
   const language = params.language ?? "en-GB";
-  const welcomeGreetingAttr = params.welcomeGreeting
-    ? ` welcomeGreeting="${escapeXml(params.welcomeGreeting)}"`
+  // welcomeGreetingInterruptible="none" is deliberate: ConversationRelay
+  // defaults to letting the caller barge in on the greeting at any point,
+  // and almost everyone says "hello?" the instant they pick up -- without
+  // this, that reflexive "hello" cuts the greeting off mid-sentence,
+  // skipping the part that says who's calling and why before the customer
+  // ever hears it. "none" forces the full intro to finish playing first.
+  const welcomeGreetingAttrs = params.welcomeGreeting
+    ? ` welcomeGreeting="${escapeXml(params.welcomeGreeting)}" welcomeGreetingInterruptible="none"`
     : "";
   return (
     `<?xml version="1.0" encoding="UTF-8"?><Response><Connect>` +
-    `<ConversationRelay url="${escapeXml(params.wsUrl)}" voice="${escapeXml(voice)}" language="${escapeXml(language)}"${welcomeGreetingAttr} />` +
+    `<ConversationRelay url="${escapeXml(params.wsUrl)}" voice="${escapeXml(voice)}" language="${escapeXml(language)}"${welcomeGreetingAttrs} />` +
     `</Connect></Response>`
   );
 }

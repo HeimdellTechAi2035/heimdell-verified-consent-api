@@ -123,4 +123,17 @@ const baseData = {
   assert.ok(alreadyDone.includes("<Hangup/>"));
 }
 
+// --- ConversationRelay welcome greeting can't be barged into by a reflexive "hello" ---
+{
+  const xml = twiml.buildConversationRelayTwiml({
+    wsUrl: "wss://voice.example.com/call/abc123",
+    welcomeGreeting: "Hello, this is a call on behalf of Acme.",
+  });
+  assert.ok(xml.includes('welcomeGreetingInterruptible="none"'), "welcome greeting must not be interruptible, or a caller's reflexive \"hello\" would cut off the intro before it says who's calling and why");
+  assert.ok(xml.includes('welcomeGreeting="Hello, this is a call on behalf of Acme."'));
+
+  const withoutGreeting = twiml.buildConversationRelayTwiml({ wsUrl: "wss://voice.example.com/call/abc123" });
+  assert.ok(!withoutGreeting.includes("welcomeGreeting"), "no greeting attribute should be emitted when none is given");
+}
+
 console.log("Voice TwiML verification passed.");
