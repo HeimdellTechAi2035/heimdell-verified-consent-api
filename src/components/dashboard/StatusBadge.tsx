@@ -16,7 +16,8 @@ type Status =
   | "ACTIVE"
   | "ARCHIVED"
   | "INACTIVE"
-  | "REVOKED";
+  | "REVOKED"
+  | "NEEDS_REVIEW";
 
 type StatusMeta = { label: string; dot: string; badge: string };
 
@@ -37,6 +38,7 @@ const STATUS_MAP: Record<Status, StatusMeta> = {
   ARCHIVED:  { label: "Archived",  dot: "bg-amber-500",   badge: "bg-amber-50 text-amber-700 border-amber-200" },
   INACTIVE:  { label: "Inactive",  dot: "bg-gray-400",    badge: "bg-gray-100 text-gray-500 border-gray-200"   },
   REVOKED:   { label: "Revoked",   dot: "bg-red-500",     badge: "bg-red-50 text-red-700 border-red-200"       },
+  NEEDS_REVIEW: { label: "Needs review", dot: "bg-amber-500", badge: "bg-amber-50 text-amber-700 border-amber-200" },
 };
 
 const FALLBACK: StatusMeta = {

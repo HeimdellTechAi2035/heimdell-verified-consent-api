@@ -86,6 +86,7 @@ export async function POST(
           directDebitMandate: {
             // Select only safe fields — encryptedAccountNumber is intentionally excluded.
             select: {
+              id: true,
               bankName: true,
               sortCode: true,
               accountNumberLast4: true,

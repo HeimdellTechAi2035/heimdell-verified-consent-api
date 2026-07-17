@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import type { OrganizationContext } from "@/lib/dashboard-auth";
 import { logDashboardTiming, nowMs } from "@/lib/dashboard-performance";
 import { normalizeSaleTermsForEvidence } from "@/lib/sale-evidence-display";
+import type { ReviewFlagEntry } from "@/lib/dashboard-sales";
 
 export const DASHBOARD_VERIFICATIONS_PAGE_SIZE = 20;
 
@@ -25,6 +26,7 @@ export type DashboardVerificationRow = {
   priceSummary: string;
   verificationStatus: VerificationStatus;
   saleStatus: string;
+  needsReview: boolean;
   createdAt: string;
   expiresAt: string;
   completedAt: string | null;
@@ -38,6 +40,7 @@ export type DashboardVerificationDetail = DashboardVerificationRow & {
   contractLength: string | null;
   termsSummary: string | null;
   policiesSummary: string | null;
+  reviewFlags: ReviewFlagEntry[];
 };
 
 export type DashboardVerificationsData = {
@@ -186,6 +189,7 @@ export async function getDashboardVerificationsData(
             productPrice: true,
             productFrequency: true,
             status: true,
+            needsReview: true,
             submittedByUser: {
               select: {
                 name: true,
@@ -225,6 +229,7 @@ export async function getDashboardVerificationsData(
       ),
       verificationStatus: session.status,
       saleStatus: session.sale.status,
+      needsReview: session.sale.needsReview,
       createdAt: session.createdAt.toISOString(),
       expiresAt: session.expiresAt.toISOString(),
       completedAt: session.completedAt?.toISOString() ?? null,
@@ -299,6 +304,8 @@ export async function getDashboardVerificationDetail(
           productTerms: true,
           productPolicies: true,
           status: true,
+          needsReview: true,
+          reviewFlags: true,
           submittedByUser: {
             select: {
               name: true,
@@ -333,6 +340,10 @@ export async function getDashboardVerificationDetail(
     ),
     verificationStatus: session.status,
     saleStatus: session.sale.status,
+    needsReview: session.sale.needsReview,
+    reviewFlags: Array.isArray(session.sale.reviewFlags)
+      ? (session.sale.reviewFlags as unknown as ReviewFlagEntry[])
+      : [],
     createdAt: session.createdAt.toISOString(),
     expiresAt: session.expiresAt.toISOString(),
     openedAt: session.openedAt?.toISOString() ?? null,

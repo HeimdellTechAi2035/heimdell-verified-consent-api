@@ -62,6 +62,7 @@ export async function POST(
           client: true,
           directDebitMandate: {
             select: {
+              id: true,
               bankName: true,
               sortCode: true,
               accountNumberLast4: true,

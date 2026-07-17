@@ -63,7 +63,13 @@ const nameAddress: StateDefinition = {
   buildSystemPrompt: (ctx: StateContext) => {
     const { sale } = ctx.callSession;
     return `
-Confirm the customer's name and address on file: "${sale.customerName}", at "${sale.customerAddress ?? "the address on file"}". Ask if these are correct. Capture any corrections the customer states in captured_data (e.g. { corrected_address: "..." }), note them, and either way call advance_conversation with next_state "PRODUCT_CONFIRMATION" once you have a clear yes or a correction -- both proceed forward, this step does not end the call.
+Confirm the customer's name and address on file: "${sale.customerName}", at "${sale.customerAddress ?? "the address on file"}". Ask if these are correct.
+
+If both are correct, call advance_conversation with next_state "PRODUCT_CONFIRMATION" and no captured_data.
+
+If the customer says the name or address is wrong: ask what it should be, then read back exactly what you heard and ask them to confirm it's right. Only once they've confirmed the correction is accurate, call advance_conversation with next_state "PRODUCT_CONFIRMATION" and captured_data: { corrections: [{ field: "customerName", value: "<corrected name>" }] } -- include a separate entry per field that changed (customerName and/or customerAddress). Never include a correction you haven't read back and had confirmed.
+
+This step always moves forward to PRODUCT_CONFIRMATION once you have a clear yes or a confirmed correction -- it never ends the call.
     `.trim();
   },
 };
@@ -76,7 +82,13 @@ const productConfirmation: StateDefinition = {
   buildSystemPrompt: (ctx: StateContext) => {
     const { sale } = ctx.callSession;
     return `
-Restate the product and pricing: "And you signed up for ${sale.productName}, at ${sale.productPrice.toString()}${frequencySuffix(sale.productFrequency)}. Is that right?" If they correct any detail, capture it in captured_data and note it. Either way, once confirmed or corrected, call advance_conversation with next_state "TERMS_UNDERSTANDING" -- this step does not end the call.
+Restate the product and pricing: "And you signed up for ${sale.productName}, at ${sale.productPrice.toString()}${frequencySuffix(sale.productFrequency)}. Is that right?"
+
+If correct, call advance_conversation with next_state "TERMS_UNDERSTANDING" and no captured_data.
+
+If the customer says the product name, price, or frequency is wrong: ask what it should be, read back exactly what you heard, and only once they've confirmed it's right, call advance_conversation with next_state "TERMS_UNDERSTANDING" and captured_data: { corrections: [{ field: "productName" | "productPrice" | "productFrequency", value: "<corrected value>" }] } -- one entry per field that changed. For productPrice, capture just the number (e.g. "34.99"), no currency symbol. Never include a correction you haven't read back and had confirmed.
+
+This step always moves forward once you have a clear yes or a confirmed correction -- it never ends the call.
     `.trim();
   },
 };
@@ -124,13 +136,19 @@ There is no Direct Debit mandate on file for this sale. Say: "It looks like I do
     return `
 You are verifying a Direct Debit mandate that was already set up at signup -- you are not collecting new payment details, only confirming what's on file. Never ask for or state a full account number -- you only ever have the last two digits, never the full number.
 
-This is three separate confirmations, one per turn -- ask one, wait for a clear answer, then move to the next:
+This is three separate confirmations, one per turn -- ask one, wait for a clear answer, then move to the next. Only ever include ONE corrections entry per turn, and never include a bank name or sort code correction you haven't read back and had the customer confirm as accurate first:
 
-1. Say: "For security, I just need to confirm a few details already provided when you signed up. I have the bank listed as ${dd.bankName}. Is that correct?" If confirmed, move to the next confirmation on your following turn. If not, call advance_conversation with next_state "DD_MISMATCH_FOLLOWUP".
+1. Say: "For security, I just need to confirm a few details already provided when you signed up. I have the bank listed as ${dd.bankName}. Is that correct?"
+   - If confirmed, move to the next confirmation on your following turn (stay in this state, no captured_data).
+   - If not: ask what the correct bank name is, read it back to confirm, and once they've confirmed it, move to the next confirmation with captured_data: { corrections: [{ field: "bankName", value: "<corrected bank name>" }] }.
 
-2. Ask: "And the sort code as ${spokenSortCode}. Is that correct?" Say the sort code EXACTLY as written above, with a distinct pause between each pair of digits -- never run it together as one number. If confirmed, move to the next confirmation on your following turn. If not, call advance_conversation with next_state "DD_MISMATCH_FOLLOWUP".
+2. Ask: "And the sort code as ${spokenSortCode}. Is that correct?" Say the sort code EXACTLY as written above, with a distinct pause between each pair of digits -- never run it together as one number.
+   - If confirmed, move to the next confirmation on your following turn (stay in this state, no captured_data).
+   - If not: ask what the correct sort code is, read it back digit-pair by digit-pair to confirm, and once they've confirmed it, move to the next confirmation with captured_data: { corrections: [{ field: "sortCode", value: "<6 digits only, no spaces or dashes>" }] }.
 
-3. Ask: "And the account number ending in ${lastTwoDigits}. Is that correct?" If confirmed, call advance_conversation with next_state "EXPLICIT_AGREEMENT". If they say it's not correct, or seem unsure, call advance_conversation with next_state "DD_MISMATCH_FOLLOWUP".
+3. Ask: "And the account number ending in ${lastTwoDigits}. Is that correct?"
+   - If confirmed, call advance_conversation with next_state "EXPLICIT_AGREEMENT".
+   - If not, or they seem unsure: say something like "No problem, I'll flag this for our team to follow up on directly" -- never ask for or accept a full account number over the phone -- then call advance_conversation with next_state "DD_MISMATCH_FOLLOWUP", optionally with captured_data: { corrections: [{ field: "accountNumberLast4", value: "<whatever they say it should end in, if they give one>" }] }.
     `.trim();
   },
 };

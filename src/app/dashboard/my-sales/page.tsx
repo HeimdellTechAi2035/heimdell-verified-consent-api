@@ -29,6 +29,7 @@ type MySaleRow = {
   productName: string;
   priceSummary: string;
   saleStatus: string;
+  needsReview: boolean;
   verificationStatus: string | null;
   verificationId: string | null;
   completedAt: Date | null;
@@ -57,7 +58,12 @@ const SELLER_COLUMNS: DataTableColumn<MySaleRow>[] = [
   },
   {
     header: "Sale",
-    cell: (row) => <StatusBadge status={row.saleStatus} />,
+    cell: (row) => (
+      <div className="space-y-1">
+        <StatusBadge status={row.saleStatus} />
+        {row.needsReview && <StatusBadge status="NEEDS_REVIEW" />}
+      </div>
+    ),
   },
   {
     header: "Verification",
@@ -216,6 +222,7 @@ async function getSellerMySalesRows({
       productPrice: true,
       productFrequency: true,
       status: true,
+      needsReview: true,
       createdAt: true,
       verificationSessions: {
         orderBy: { createdAt: "desc" },
@@ -244,6 +251,7 @@ async function getSellerMySalesRows({
       sale.productFrequency
     ),
     saleStatus: sale.status,
+    needsReview: sale.needsReview,
     verificationStatus: sale.verificationSessions[0]?.status ?? null,
     verificationId: sale.verificationSessions[0]?.id ?? null,
     completedAt: sale.verificationSessions[0]?.completedAt ?? null,

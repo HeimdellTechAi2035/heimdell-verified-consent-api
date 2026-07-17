@@ -73,7 +73,7 @@ export type CertificateEvidence =
  */
 export type SafeMandate = Pick<
   DirectDebitMandate,
-  "bankName" | "sortCode" | "accountNumberLast4" | "accountHolderName"
+  "id" | "bankName" | "sortCode" | "accountNumberLast4" | "accountHolderName"
 >;
 
 export type CertificateInput = {

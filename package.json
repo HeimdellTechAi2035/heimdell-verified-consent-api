@@ -60,6 +60,7 @@
     "test:rate-limit": "node scripts/verify-rate-limit.mjs",
     "test:phone-normalization": "node scripts/verify-phone-normalization.mjs",
     "test:voice-agent-states": "node scripts/verify-voice-agent-states.mjs",
+    "test:voice-agent-corrections": "node scripts/verify-voice-agent-corrections.mjs",
     "test:health": "curl http://localhost:3000/api/health",
     "test:all": "node scripts/run-all-verify-tests.mjs"
   },

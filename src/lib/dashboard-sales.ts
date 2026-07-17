@@ -12,6 +12,18 @@ export type DashboardSalesFilters = {
   search?: string | null;
 };
 
+// Written by the phone verification agent (voice-agent-service/src/corrections.ts)
+// when a customer says a previously-recorded detail is wrong and states a
+// correction. Shape kept in sync manually -- this side only ever reads it.
+export type ReviewFlagEntry = {
+  field: string;
+  state: string;
+  oldValue: string;
+  newValue: string;
+  applied: boolean;
+  correctedAt: string;
+};
+
 export type DashboardSaleRow = {
   id: string;
   saleReference: string;
@@ -29,6 +41,7 @@ export type DashboardSaleRow = {
   priceSummary: string;
   contractLength: string | null;
   saleStatus: SaleStatus;
+  needsReview: boolean;
   latestVerificationStatus: VerificationStatus | null;
   latestVerificationId: string | null;
   latestVerificationCreatedAt: string | null;
@@ -41,6 +54,7 @@ export type DashboardSaleRow = {
 };
 
 export type DashboardSaleDetail = DashboardSaleRow & {
+  reviewFlags: ReviewFlagEntry[];
   termsSummary: string | null;
   policiesSummary: string | null;
   salesChannel: string | null;
@@ -218,6 +232,7 @@ export async function getDashboardSalesData(
         productPrice: true,
         productFrequency: true,
         status: true,
+        needsReview: true,
         createdAt: true,
         updatedAt: true,
         submittedByUser: {
@@ -265,6 +280,7 @@ export async function getDashboardSalesData(
       priceSummary: formatPriceSummary(sale.productPrice, sale.productFrequency),
       contractLength: null,
       saleStatus: sale.status,
+      needsReview: sale.needsReview,
       latestVerificationStatus: getLatestVerificationStatus(
         sale.verificationSessions
       ),
@@ -340,6 +356,8 @@ export async function getDashboardSaleDetail(
       aiMarketingOptIn: true,
       coolingOffDays: true,
       status: true,
+      needsReview: true,
+      reviewFlags: true,
       createdAt: true,
       updatedAt: true,
       submittedByUser: {
@@ -398,6 +416,8 @@ export async function getDashboardSaleDetail(
     priceSummary: formatPriceSummary(sale.productPrice, sale.productFrequency),
     contractLength: termsEvidence.contractLength,
     saleStatus: sale.status,
+    needsReview: sale.needsReview,
+    reviewFlags: Array.isArray(sale.reviewFlags) ? (sale.reviewFlags as unknown as ReviewFlagEntry[]) : [],
     latestVerificationStatus: latestSession?.status ?? null,
     latestVerificationId: latestSession?.id ?? null,
     latestVerificationCreatedAt: latestSession?.createdAt.toISOString() ?? null,

@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { DashboardHeader } from "@/components/dashboard/DashboardHeader";
 import { DashboardRoleGate } from "@/components/dashboard/DashboardRoleGate";
 import { StatusBadge } from "@/components/dashboard/StatusBadge";
+import { ReviewFlagsNotice } from "@/components/dashboard/ReviewFlagsNotice";
 import { requireOrganizationMembership } from "@/lib/dashboard-auth";
 import {
   getDashboardSaleDetail,
@@ -94,6 +95,7 @@ function SaleDetail({ detail }: { detail: DashboardSaleDetail }) {
       </div>
 
       {detail.latestVerificationStatus === "PENDING" && <PendingLinkNotice />}
+      <ReviewFlagsNotice flags={detail.reviewFlags} />
 
       <Section title="Customer">
         <dl className="grid gap-5 md:grid-cols-2">
@@ -123,7 +125,10 @@ function SaleDetail({ detail }: { detail: DashboardSaleDetail }) {
           <Field label="Sales channel" value={detail.salesChannel} />
           <div>
             <dt className="text-xs font-semibold uppercase tracking-wide text-gray-400">Sale status</dt>
-            <dd className="mt-1"><StatusBadge status={detail.saleStatus} /></dd>
+            <dd className="mt-1 flex flex-wrap gap-1.5">
+              <StatusBadge status={detail.saleStatus} />
+              {detail.needsReview && <StatusBadge status="NEEDS_REVIEW" />}
+            </dd>
           </div>
           <Field
             label="Cooling-off"

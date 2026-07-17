@@ -79,6 +79,11 @@ enum ConsentEventType {
   // live during the call rather than bundled from a single keypress.
   NAME_ADDRESS_CONFIRMED
   EXPLICIT_AGREEMENT_CONFIRMED
+  // The customer said a previously-recorded detail was wrong during the
+  // call and stated a correction, which was written back to Sale/
+  // DirectDebitMandate live. eventPayload carries {field, oldValue,
+  // newValue, state}.
+  DATA_CORRECTED_ON_CALL
 }
 
 enum Role {
@@ -297,12 +302,21 @@ model Sale {
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt
 
+  // Set when the phone verification agent auto-corrects a previously
+  // recorded detail (the customer said it was wrong and stated a
+  // correction). reviewFlags is an append-only array of
+  // {field, state, oldValue, newValue, correctedAt} entries, surfaced as a
+  // dashboard badge/banner so the seller/client can see what changed.
+  needsReview Boolean @default(false)
+  reviewFlags Json?
+
   directDebitMandate   DirectDebitMandate?
   verificationSessions VerificationSession[]
   notifications        Notification[]
 
   @@index([submittedByUserId])
   @@index([clientId])
+  @@index([needsReview])
 }
 
 /// Direct Debit mandate details associated with a Sale.

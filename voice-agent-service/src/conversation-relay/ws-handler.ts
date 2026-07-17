@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { buildIdentityGreetingText } from "@/lib/voice-twiml";
 import { bootstrapCallSession, type CallSession } from "../session/session-bootstrap";
 import { recordLiveConsentEvent } from "../consent-events";
+import { applyCapturedCorrections } from "../corrections";
 import { advanceConversationTurn, getStateDefinition } from "../states/state-machine";
 import { handleTerminalOutcome } from "../states/terminal-outcomes";
 import { isTerminalState, type ConversationStateId, type ConversationTurn, type TerminalStateId } from "../states/types";
@@ -66,6 +67,12 @@ async function runSingleTurn(
 
   failureState.consecutiveFailures = 0;
   const { replyText, nextState, capturedData } = turn.result;
+
+  try {
+    await applyCapturedCorrections(callSession, currentState, capturedData);
+  } catch (err) {
+    console.error(`[voice-agent] failed to apply captured corrections in state ${currentState}, call ${callSid}:`, err);
+  }
 
   if (turn.consentEventRecorded) {
     const definition = getStateDefinition(currentState);

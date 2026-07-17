@@ -18,6 +18,7 @@ export type BootstrapResult =
   | { ok: false; reason: BootstrapFailureReason };
 
 const SAFE_MANDATE_SELECT = {
+  id: true,
   bankName: true,
   sortCode: true,
   accountNumberLast4: true,

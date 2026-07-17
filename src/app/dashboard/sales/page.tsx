@@ -62,7 +62,12 @@ const COLUMNS: DataTableColumn<DashboardSaleRow>[] = [
   },
   {
     header: "Sale",
-    cell: (r) => <StatusBadge status={r.saleStatus} />,
+    cell: (r) => (
+      <div className="space-y-1">
+        <StatusBadge status={r.saleStatus} />
+        {r.needsReview && <StatusBadge status="NEEDS_REVIEW" />}
+      </div>
+    ),
   },
   {
     header: "Verification",

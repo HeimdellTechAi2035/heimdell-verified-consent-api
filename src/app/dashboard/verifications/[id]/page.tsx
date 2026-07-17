@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { DashboardHeader } from "@/components/dashboard/DashboardHeader";
 import { DashboardRoleGate } from "@/components/dashboard/DashboardRoleGate";
 import { StatusBadge } from "@/components/dashboard/StatusBadge";
+import { ReviewFlagsNotice } from "@/components/dashboard/ReviewFlagsNotice";
 import { requireOrganizationMembership } from "@/lib/dashboard-auth";
 import {
   getDashboardVerificationDetail,
@@ -63,6 +64,7 @@ function VerificationDetail({ detail }: { detail: DashboardVerificationDetail })
           The pending verification URL is shown only on the New Verification success screen because it is a sensitive secure link.
         </div>
       )}
+      <ReviewFlagsNotice flags={detail.reviewFlags} />
 
       <Section title="Outcome">
         <dl className="grid gap-5 md:grid-cols-3">
@@ -72,7 +74,10 @@ function VerificationDetail({ detail }: { detail: DashboardVerificationDetail })
           </div>
           <div>
             <dt className="text-xs font-semibold uppercase tracking-wide text-gray-400">Sale status</dt>
-            <dd className="mt-1"><StatusBadge status={detail.saleStatus} /></dd>
+            <dd className="mt-1 flex flex-wrap gap-1.5">
+              <StatusBadge status={detail.saleStatus} />
+              {detail.needsReview && <StatusBadge status="NEEDS_REVIEW" />}
+            </dd>
           </div>
           <Field label="Client reference" value={detail.clientReference} />
           <Field label="Created" value={formatDateTime(detail.createdAt)} />
