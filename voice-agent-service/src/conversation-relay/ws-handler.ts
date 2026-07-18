@@ -1,7 +1,7 @@
 import type { Prisma } from "@prisma/client";
 import type { WebSocket } from "ws";
 import { db } from "@/lib/db";
-import { buildIdentityGreetingText } from "@/lib/voice-twiml";
+import { buildIdentityGreetingText, buildPolicyDisclosureText } from "@/lib/voice-twiml";
 import { bootstrapCallSession, type CallSession } from "../session/session-bootstrap";
 import { recordLiveConsentEvent } from "../consent-events";
 import { applyCapturedCorrections } from "../corrections";
@@ -126,8 +126,18 @@ async function runChainedTurns(
 ): Promise<ChainResult> {
   const outcome = await runSingleTurn(startState, callSession, callSid, turnHistory, failureState);
 
-  const spokenText =
-    outcome.status === "advance" ? `${outcome.replyText} ${READINESS_QUESTION}` : outcome.replyText;
+  const spokenText = (() => {
+    if (outcome.status !== "advance") {
+      return outcome.replyText;
+    }
+    // Deterministic, not left to Claude to decide to read on POLICY_FAQ's
+    // own turn -- see buildPolicyDisclosureText's comment.
+    const policyDisclosure =
+      outcome.nextState === "POLICY_FAQ"
+        ? ` ${buildPolicyDisclosureText(callSession.sale.productPolicies, callSession.policySnapshot.directDebitGuaranteeWording)}`
+        : "";
+    return `${outcome.replyText}${policyDisclosure} ${READINESS_QUESTION}`;
+  })();
 
   turnHistory.push({ role: "assistant", content: spokenText });
   transcript.push({ role: "assistant", content: spokenText });
@@ -209,6 +219,12 @@ export async function handleConversationRelayConnection(socket: WebSocket, token
         terminalState: result.state,
         transcript,
       });
+      // The final line (e.g. "Thank you... goodbye") was already sent as a
+      // "text" message inside runChainedTurns, but closing the socket
+      // immediately after doesn't guarantee Twilio has finished actually
+      // speaking it yet -- a real call cut off mid-sentence at the very
+      // end. Give it a couple of seconds to finish before hanging up.
+      await new Promise((resolve) => setTimeout(resolve, 2000));
       send(socket, { type: "end" });
       socket.close();
       return;

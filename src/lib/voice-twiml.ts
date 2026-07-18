@@ -184,6 +184,24 @@ export function buildIdentityGreetingText(
   );
 }
 
+/**
+ * The seller's product-specific policies text plus the client's Direct
+ * Debit guarantee wording, read word-for-word during the POLICY_FAQ state.
+ * Generated here and appended by code (see ws-handler.ts) rather than left
+ * to Claude to decide to read on its own turn -- a real test call showed
+ * the model skip reading the policies altogether even though the
+ * equivalent "read this verbatim" instruction for TERMS_UNDERSTANDING
+ * worked reliably, so this is made deterministic the same way the
+ * readiness question and opening greeting already are.
+ */
+export function buildPolicyDisclosureText(
+  productPolicies: string | null,
+  directDebitGuaranteeWording: string
+): string {
+  const sellerPolicies = productPolicies?.trim();
+  return sellerPolicies ? `${sellerPolicies} ${directDebitGuaranteeWording}` : directDebitGuaranteeWording;
+}
+
 export type ConversationRelayTwimlParams = {
   wsUrl: string;
   voice?: string;

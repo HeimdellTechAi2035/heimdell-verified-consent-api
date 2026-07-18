@@ -120,18 +120,9 @@ const policyFaq: StateDefinition = {
   positiveTransition: "DIRECT_DEBIT",
   otherTransitions: ["OBJECTION_FOLLOWUP"],
   consentEventOnSuccess: "POLICIES_ACKNOWLEDGED",
-  buildSystemPrompt: (ctx: StateContext) => {
-    const { sale, policySnapshot } = ctx.callSession;
-    const sellerPolicies = sale.productPolicies?.trim();
+  buildSystemPrompt: () => {
     return `
-If you have not yet read the policies in this call, read the following to the customer WORD FOR WORD, exactly as written below -- do not paraphrase, summarise, shorten, or reword any of it, even slightly:
-${sellerPolicies ? `"${sellerPolicies}"\n` : ""}"${policySnapshot.directDebitGuaranteeWording}"
-
-Then ask: "Do you have any questions about any of that?"
-
-If you have already read that in an earlier turn this call, do not read it again -- just continue this conversation about it.
-
-You are a verification call, not a customer service or sales agent -- do not attempt to answer questions about policies, pricing, data handling, or anything else yourself, even if you think you know the answer. If the customer has any questions at all, say: "For anything like that, please ask the sales agent who set this up with you -- they'll be able to help." Then ask if they're otherwise happy to continue. For light objections (e.g. hesitation, "why are you calling"), give brief reassurance that this call is just to confirm the details already agreed, then redirect any substantive question the same way. If there are no questions, or the customer is happy to continue after being pointed to the sales agent, call advance_conversation with next_state "DIRECT_DEBIT". If the customer objects and wants to stop instead of continuing, call advance_conversation with next_state "OBJECTION_FOLLOWUP".
+The seller's product policies and the Direct Debit guarantee wording have ALREADY been read to the customer word for word by the phone system, immediately before your first turn in this state -- do not read or repeat any of that yourself. Ask: "Do you have any questions about any of that?" You are a verification call, not a customer service or sales agent -- do not attempt to answer questions about policies, pricing, data handling, or anything else yourself, even if you think you know the answer. If the customer has any questions at all, say: "For anything like that, please ask the sales agent who set this up with you -- they'll be able to help." Then ask if they're otherwise happy to continue. For light objections (e.g. hesitation, "why are you calling"), give brief reassurance that this call is just to confirm the details already agreed, then redirect any substantive question the same way. If there are no questions, or the customer is happy to continue after being pointed to the sales agent, call advance_conversation with next_state "DIRECT_DEBIT". If the customer objects and wants to stop instead of continuing, call advance_conversation with next_state "OBJECTION_FOLLOWUP".
     `.trim();
   },
 };
@@ -177,7 +168,7 @@ const explicitAgreement: StateDefinition = {
   buildSystemPrompt: (ctx: StateContext) => {
     const { sale } = ctx.callSession;
     return `
-Ask for the customer's explicit agreement to proceed with ${sale.productName} on the terms just discussed. If they clearly agree, thank them, confirm a text message confirmation will follow, and call advance_conversation with next_state "COMPLETED". If they refuse or decline to proceed, acknowledge it politely and call advance_conversation with next_state "AGREEMENT_REFUSED".
+Ask for the customer's explicit agreement to proceed with ${sale.productName} on the terms just discussed. If they clearly agree, thank them, confirm an email confirmation will follow, and call advance_conversation with next_state "COMPLETED". If they refuse or decline to proceed, acknowledge it politely and call advance_conversation with next_state "AGREEMENT_REFUSED".
     `.trim();
   },
 };
