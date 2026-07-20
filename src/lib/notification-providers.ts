@@ -44,10 +44,14 @@ function missingProvider(provider: string): ProviderSendResult {
 
 // Sends via a real SMTP mailbox (Fasthosts/Livemail, e.g. admin@telecomcompliance.uk)
 // rather than a transactional-email API -- no third-party email provider
-// account exists for this project. The transporter is created once and
-// reused across sends within the same process; if the SMTP env vars are
-// ever changed, the process needs restarting (a Netlify/Railway redeploy)
-// to pick them up.
+// account exists for this project. The transporter is cached and reused
+// across sends within the same process, keyed on ALL FOUR credential
+// values including the password -- a password-only rotation (host/port/
+// user unchanged) must also invalidate the cache, or every send keeps
+// silently authenticating with the old password until it fails. The
+// process still needs restarting (a Netlify/Railway redeploy) to pick up
+// the new env var value in the first place; this only prevents a stale
+// *in-memory* transporter from outliving that.
 let cachedTransporter: Transporter | null = null;
 let cachedTransporterKey: string | null = null;
 
@@ -61,7 +65,7 @@ function getSmtpTransporter(): Transporter | null {
     return null;
   }
 
-  const key = `${host}:${port}:${user}`;
+  const key = `${host}:${port}:${user}:${pass}`;
   if (cachedTransporter && cachedTransporterKey === key) {
     return cachedTransporter;
   }

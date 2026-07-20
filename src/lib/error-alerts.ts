@@ -54,6 +54,14 @@ export async function alertOnServerError(params: {
   if (process.env.NEXT_RUNTIME !== "nodejs") {
     // Edge middleware errors reach this too, but nodemailer can't run
     // there -- skip alerting rather than breaking the edge bundle.
+    // NEXT_RUNTIME is set by Next.js itself, not something this app or
+    // Netlify configures -- an internal implementation detail, not a
+    // documented public contract, so it's not guaranteed stable forever.
+    // If alert emails silently stop arriving, check Netlify function logs
+    // for this exact line to see what value was actually observed --
+    // that's the fastest way to tell "no server errors happened" apart
+    // from "this assumption broke".
+    console.log(`[error-alerts] skipping alert email -- NEXT_RUNTIME is "${process.env.NEXT_RUNTIME ?? "unset"}", not "nodejs"`);
     return;
   }
 

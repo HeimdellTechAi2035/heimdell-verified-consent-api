@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 import { buildIdentityGreetingText, buildPolicyDisclosureText } from "@/lib/voice-twiml";
 import { bootstrapCallSession, type CallSession } from "../session/session-bootstrap";
 import { recordLiveConsentEvent } from "../consent-events";
-import { applyCapturedCorrections } from "../corrections";
+import { applyCapturedCorrections, appendReviewFlag } from "../corrections";
 import { advanceConversationTurn, getStateDefinition } from "../states/state-machine";
 import { handleTerminalOutcome } from "../states/terminal-outcomes";
 import { isTerminalState, type ConversationStateId, type ConversationTurn, type TerminalStateId } from "../states/types";
@@ -31,8 +31,24 @@ const REPEATED_FAILURE_REPLY =
 // indefinitely.
 const MAX_CONSECUTIVE_SOFT_FAILURES = 2;
 
+/**
+ * A customer hanging up right as a reply is being sent (very plausible
+ * right after a "goodbye" line, including during the 2s pre-hangup delay
+ * below) means `socket.send` can throw or emit an unhandled 'error' event
+ * on an already-closed/closing socket. With no listener, an emitted
+ * WebSocket error is fatal to the whole Node process by default -- which
+ * would kill every other concurrent call, not just this one. Guard both:
+ * skip sending to a socket that isn't OPEN, and never let send() throw.
+ */
 function send(socket: WebSocket, message: Parameters<typeof serializeOutboundMessage>[0]) {
-  socket.send(serializeOutboundMessage(message));
+  if (socket.readyState !== socket.OPEN) {
+    return;
+  }
+  try {
+    socket.send(serializeOutboundMessage(message));
+  } catch (err) {
+    console.error("[voice-agent] socket.send failed:", err);
+  }
 }
 
 type SingleTurnOutcome =
@@ -154,7 +170,24 @@ async function runChainedTurns(
   return { kind: "waiting", state: outcome.nextState };
 }
 
-async function recordTechnicalFailureOutcome(callSid: string, transcript: ConversationTurn[]) {
+/**
+ * Neither this path nor the disconnect handler below ever touched
+ * VerificationSession.status or Sale.needsReview -- so a call that ended
+ * via a technical error or a dropped connection left the session sitting
+ * in whatever status it already had (PENDING/OPENED), with zero staff
+ * visibility, until it silently expired later. Deliberately does NOT call
+ * declineVerificationSession here: a technical failure or a dropped call
+ * is never the customer's decision (same principle already applied to
+ * WRONG_NUMBER below), so the web-link fallback must stay valid -- this
+ * only flags the sale for review so staff can see something needs
+ * following up, without blocking the customer's other path to complete.
+ */
+async function recordTechnicalFailureOutcome(
+  callSid: string,
+  transcript: ConversationTurn[],
+  callSession: CallSession | null,
+  state: ConversationStateId
+) {
   try {
     await db.phoneVerificationAttempt.updateMany({
       where: { providerCallSid: callSid },
@@ -168,10 +201,30 @@ async function recordTechnicalFailureOutcome(callSid: string, transcript: Conver
   } catch (err) {
     console.error(`[voice-agent] failed to record technical-failure outcome for call ${callSid}:`, err);
   }
+
+  if (callSession) {
+    await appendReviewFlag(callSession.sale.id, {
+      field: "unknown",
+      state,
+      oldValue: "",
+      newValue: "Call ended due to a technical error (e.g. Claude API failure) -- see PhoneVerificationAttempt.transcript/outcome for this call.",
+      applied: false,
+      correctedAt: new Date().toISOString(),
+    });
+  }
 }
 
 export async function handleConversationRelayConnection(socket: WebSocket, token: string): Promise<void> {
   let callSid: string | null = null;
+
+  // Without this, an 'error' event on this socket (e.g. writing to a
+  // connection the customer just hung up) has zero listeners and is
+  // fatal to the whole Node process by default, taking every other
+  // concurrent call down with it.
+  socket.on("error", (err) => {
+    console.error(`[voice-agent] socket error for call ${callSid ?? "unknown"}:`, err);
+  });
+
   let callSession: CallSession | null = null;
   let currentState: ConversationStateId = "IDENTITY_CHECK";
   const turnHistory: ConversationTurn[] = [];
@@ -187,14 +240,64 @@ export async function handleConversationRelayConnection(socket: WebSocket, token
   // separately, by content: if the next prompt's text matches the last one
   // actually processed, within a short window, treat it as a duplicate
   // delivery and drop it rather than running a second identical turn.
-  let lastProcessedPrompt: { text: string; at: number } | null = null;
+  //
+  // Text-matching alone is too broad, though: Direct Debit asks three
+  // "is that correct?" questions back to back, all within the SAME state,
+  // so a customer legitimately answering "yes" three times in a row was
+  // being caught by this same filter and silently dropped -- a real
+  // answer eaten, not a duplicate. turnHistoryLength closes that gap: it
+  // only counts as a duplicate if the assistant has NOT asked anything new
+  // since the last processed prompt (turnHistory hasn't grown), which is
+  // exactly what distinguishes a genuine re-delivery of the same utterance
+  // from a legitimate new answer to a new question that happens to use the
+  // same word.
+  let lastProcessedPrompt: { text: string; at: number; turnHistoryLength: number } | null = null;
   const DUPLICATE_PROMPT_WINDOW_MS = 8_000;
   // Twilio has been observed sending a "prompt" before "setup" has finished
   // processing (a real race, seen on a live call, that silently dropped
   // the customer's first utterance and then the whole connection died) --
   // queue it instead of discarding it, and drain the queue once setup
   // completes.
+  //
+  // Deliberately gated on a dedicated flag, not `callSession` truthiness:
+  // callSession is assigned synchronously partway through the "setup"
+  // handler, but an `await` (the DB status update) still runs after that
+  // before the queue is actually drained. A second prompt arriving in
+  // that exact window would see callSession already set and get handled
+  // immediately, jumping ahead of prompts still sitting in the queue from
+  // earlier -- processed out of order. setupComplete only flips true once
+  // the whole setup handler, drain included, has finished.
   const queuedPrompts: string[] = [];
+  let setupComplete = false;
+
+  // Nothing previously bounded how long a connection could stay open --
+  // if the customer went silent (or Twilio never delivered a "prompt" for
+  // some other reason) the call would just hang forever with no local
+  // fallback, relying entirely on Twilio's own call-duration defaults.
+  // A real conversation finishes in well under 15 minutes even with a
+  // couple of re-prompts, so this only ever fires on a genuinely stuck
+  // connection.
+  const MAX_CALL_DURATION_MS = 15 * 60 * 1000;
+  const maxDurationTimer = setTimeout(() => {
+    void (async () => {
+      if (resolved) {
+        return;
+      }
+      resolved = true;
+      console.error(`[voice-agent] call ${callSid ?? "unknown"} exceeded max duration, force-ending`);
+      send(socket, {
+        type: "text",
+        token: "Sorry, we've run out of time on this call. Someone from our team will follow up with you directly. Thank you, goodbye.",
+        last: true,
+      });
+      if (callSid) {
+        await recordTechnicalFailureOutcome(callSid, transcript, callSession, currentState);
+      }
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      send(socket, { type: "end" });
+      socket.close();
+    })();
+  }, MAX_CALL_DURATION_MS);
 
   async function handleChain(startState: ConversationStateId) {
     if (!callSession || !callSid) {
@@ -205,7 +308,7 @@ export async function handleConversationRelayConnection(socket: WebSocket, token
 
     if (result.kind === "force_end") {
       resolved = true;
-      await recordTechnicalFailureOutcome(callSid, transcript);
+      await recordTechnicalFailureOutcome(callSid, transcript, callSession, startState);
       send(socket, { type: "end" });
       socket.close();
       return;
@@ -244,12 +347,12 @@ export async function handleConversationRelayConnection(socket: WebSocket, token
     if (
       lastProcessedPrompt &&
       lastProcessedPrompt.text === normalized &&
+      lastProcessedPrompt.turnHistoryLength === turnHistory.length &&
       now - lastProcessedPrompt.at < DUPLICATE_PROMPT_WINDOW_MS
     ) {
-      console.log(`[voice-agent] dropping duplicate prompt (same text within ${DUPLICATE_PROMPT_WINDOW_MS}ms) for call ${callSid}: ${voicePrompt}`);
+      console.log(`[voice-agent] dropping duplicate prompt (same text, no new assistant turn since, within ${DUPLICATE_PROMPT_WINDOW_MS}ms) for call ${callSid}: ${voicePrompt}`);
       return;
     }
-    lastProcessedPrompt = { text: normalized, at: now };
 
     turnInProgress = true;
     turnHistory.push({ role: "user", content: voicePrompt });
@@ -260,6 +363,8 @@ export async function handleConversationRelayConnection(socket: WebSocket, token
     } finally {
       turnInProgress = false;
     }
+
+    lastProcessedPrompt = { text: normalized, at: now, turnHistoryLength: turnHistory.length };
   }
 
   async function handleMessage(message: InboundMessage) {
@@ -304,6 +409,7 @@ export async function handleConversationRelayConnection(socket: WebSocket, token
           await handlePrompt(next);
         }
       }
+      setupComplete = true;
       return;
     }
 
@@ -316,7 +422,7 @@ export async function handleConversationRelayConnection(socket: WebSocket, token
         return;
       }
 
-      if (!callSession || !callSid) {
+      if (!setupComplete || !callSession || !callSid) {
         console.log(`[voice-agent] prompt arrived before setup completed for call ${callSid ?? "unknown"}, queueing`);
         queuedPrompts.push(message.voicePrompt);
         return;
@@ -351,7 +457,7 @@ export async function handleConversationRelayConnection(socket: WebSocket, token
         if (!resolved && callSid) {
           resolved = true;
           send(socket, { type: "text", token: API_ERROR_REPLY, last: true });
-          await recordTechnicalFailureOutcome(callSid, transcript);
+          await recordTechnicalFailureOutcome(callSid, transcript, callSession, currentState);
           send(socket, { type: "end" });
           socket.close();
         }
@@ -360,6 +466,7 @@ export async function handleConversationRelayConnection(socket: WebSocket, token
   });
 
   socket.on("close", () => {
+    clearTimeout(maxDurationTimer);
     void (async () => {
       if (resolved || !callSid) {
         return;
@@ -380,6 +487,23 @@ export async function handleConversationRelayConnection(socket: WebSocket, token
         });
       } catch (err) {
         console.error(`[voice-agent] failed to record disconnect outcome for call ${callSid}:`, err);
+      }
+
+      // Same gap as recordTechnicalFailureOutcome: without this, a dropped
+      // call left VerificationSession sitting untouched with zero staff
+      // visibility until it silently expired. A dropped call is never the
+      // customer's decision either, so -- same as WRONG_NUMBER -- this
+      // only flags for review rather than declining the session, keeping
+      // the web-link fallback valid.
+      if (callSession) {
+        await appendReviewFlag(callSession.sale.id, {
+          field: "unknown",
+          state: currentState,
+          oldValue: "",
+          newValue: "Call disconnected before reaching a terminal state -- see PhoneVerificationAttempt.transcript for how far the conversation got.",
+          applied: false,
+          correctedAt: new Date().toISOString(),
+        });
       }
     })();
   });

@@ -19,7 +19,9 @@ function buildFullSystemPrompt(definition: StateDefinition, ctx: StateContext): 
 
 You must call advance_conversation exactly once per turn. If you have not yet received a clear, unambiguous answer to what you just asked -- including if this is the very first turn of the call and you have not asked anything yet -- set next_state to "${definition.id}" (stay here) and use reply_text to ask or re-ask the question. Only choose one of the other transitions named above once you have a clear answer.
 
-If next_state is DIFFERENT from "${definition.id}" (a genuine move to a new topic), briefly acknowledge what was just confirmed in reply_text -- do not ask the new topic's specific question yet, that happens on your next turn. A readiness question is appended automatically after your reply_text when this happens, so do not add your own "are you ready?" or "shall we continue?" -- that would ask it twice.`;
+If next_state is DIFFERENT from "${definition.id}" (a genuine move to a new topic), briefly acknowledge what was just confirmed in reply_text -- do not ask the new topic's specific question yet, that happens on your next turn. A readiness question is appended automatically after your reply_text when this happens, so do not add your own "are you ready?" or "shall we continue?" -- that would ask it twice.
+
+OVERRIDE, applies regardless of what step we're on: if the customer clearly and explicitly says they want no further contact or to stop being called -- not just hesitation or a question, an actual "stop calling me" / "don't contact me again" -- immediately call advance_conversation with next_state "STOP_REQUESTED" and a brief, polite closing reply_text acknowledging their request. This takes priority over every other instruction above.`;
 }
 
 function extractToolInput(response: Anthropic.Message): AdvanceConversationToolInput | null {

@@ -390,6 +390,16 @@ model PhoneVerificationAttempt {
   /// Full turn-by-turn conversation, for compliance disputes. Only
   /// populated by the conversational voice agent.
   transcript               Json?
+  /// SHA-256 hash of a one-time, call-specific token minted when Twilio
+  /// fetches /twiml for this attempt (a signature-verified request) --
+  /// used to authenticate the ConversationRelay WebSocket connection.
+  /// Deliberately NOT the same as VerificationSession.tokenHash: that
+  /// token is handed to the customer for the web verification page, and
+  /// reusing it here would mean anyone who obtained that link could open
+  /// a raw WS connection and drive the voice agent themselves with no
+  /// Twilio call involved at all.
+  wsTokenHash              String?         @unique
+  wsTokenExpiresAt         DateTime?
 
   initiatedAt DateTime  @default(now())
   answeredAt  DateTime?

@@ -46,6 +46,34 @@ function isDeclineEligible(state: TerminalStateId): state is DeclineEligibleStat
   return state !== "COMPLETED" && state !== "WRONG_NUMBER";
 }
 
+/**
+ * callSession.sale is a snapshot captured once at call bootstrap and never
+ * refreshed -- but corrections.ts writes customer/product/bank corrections
+ * straight to the DB mid-call, without updating that in-memory object. A
+ * real gap this caused: the certificate and completion email were built
+ * from the STALE pre-correction values even when the DB had already been
+ * updated with the customer's correction. Re-fetching here, right before
+ * any terminal-outcome side effect uses `sale`, closes that gap for every
+ * branch below (COMPLETED, WRONG_NUMBER, and every decline reason).
+ */
+async function fetchFreshSale(saleId: string) {
+  return db.sale.findUniqueOrThrow({
+    where: { id: saleId },
+    include: {
+      client: true,
+      directDebitMandate: {
+        select: {
+          id: true,
+          bankName: true,
+          sortCode: true,
+          accountNumberLast4: true,
+          accountHolderName: true,
+        },
+      },
+    },
+  });
+}
+
 async function recordAttemptOutcome(
   callSid: string,
   outcome: string,
@@ -65,7 +93,8 @@ async function recordAttemptOutcome(
 
 export async function handleTerminalOutcome(params: TerminalOutcomeParams): Promise<void> {
   const { callSession, callSid, terminalState, transcript } = params;
-  const { verificationSession, sale } = callSession;
+  const { verificationSession } = callSession;
+  const sale = await fetchFreshSale(callSession.sale.id);
 
   if (terminalState === "COMPLETED") {
     const result = await completeVerificationSession({

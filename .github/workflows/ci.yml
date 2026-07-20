@@ -46,3 +46,40 @@ jobs:
 
       - name: Build
         run: npm run build
+
+  voice-agent-service:
+    runs-on: ubuntu-latest
+    env:
+      # Same dummy-value rationale as the main build-and-test job above --
+      # nothing here connects to a real database or provider. Previously
+      # NOTHING built/typechecked voice-agent-service in CI at all: a
+      # schema change breaking it (e.g. a renamed column it reads) was
+      # only ever caught live, on an actual phone call, not at merge time.
+      DATABASE_URL: "postgresql://user:pass@localhost:5432/db"
+      TWILIO_ACCOUNT_SID: "ACci-placeholder-account-sid"
+      ANTHROPIC_API_KEY: "ci-placeholder-anthropic-key"
+      APP_URL: "https://telecomcompliance.uk"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: voice-agent-service/package-lock.json
+
+      - name: Install dependencies
+        working-directory: voice-agent-service
+        run: npm ci
+
+      - name: Sync schema and generate Prisma client
+        working-directory: voice-agent-service
+        run: npm run db:generate
+
+      - name: Type-check
+        working-directory: voice-agent-service
+        run: npx tsc --noEmit
+
+      - name: Build (esbuild bundle, same command as the Dockerfile)
+        working-directory: voice-agent-service
+        run: npm run build

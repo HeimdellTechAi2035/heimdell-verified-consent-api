@@ -34,14 +34,47 @@ const MANDATE_FIELDS: ReadonlySet<CorrectableField> = new Set(["bankName", "sort
 // Deliberately not auto-applied -- see the CorrectableField comment above.
 const FLAG_ONLY_FIELDS: ReadonlySet<CorrectableField> = new Set(["accountNumberLast4"]);
 
-type ReviewFlagEntry = {
-  field: CorrectableField;
+// Free-text fields (name/address/product name/bank name) had no length
+// bound at all -- voice STT can produce long, garbled runs of text (e.g.
+// a customer rambling, or a misfire that transcribes background noise),
+// and that would previously get validated as "ok" and written straight to
+// the DB, then flow unbounded into the certificate, its PDF render, and
+// the plain-text completion email. Generous enough for any real name/
+// address/product/bank name, not for a STT misfire.
+const MAX_FREE_TEXT_LENGTH = 200;
+
+// reviewFlags is a JSON array with no cap -- a confused turn re-stating
+// the same field repeatedly (the 3-step Direct Debit confirmation alone
+// applies corrections on self-transitions, not just real state changes)
+// or corrections across many calls to the same sale could grow this
+// unbounded. Keep only the most recent entries; older ones are still in
+// the DATA_CORRECTED_ON_CALL ConsentEvent audit trail, which is
+// append-only and never trimmed.
+const MAX_REVIEW_FLAGS = 50;
+
+export type ReviewFlagEntry = {
+  field: CorrectableField | "unknown";
   state: ConversationStateId;
   oldValue: string;
   newValue: string;
   applied: boolean;
   correctedAt: string;
 };
+
+/** Shared by captureCorrection, flagMalformedCorrectionAttempt, and (imported directly) terminal-outcomes.ts/ws-handler.ts for technical-failure/disconnect visibility -- appends one entry, capped at MAX_REVIEW_FLAGS (oldest dropped first; the full history stays in the append-only DATA_CORRECTED_ON_CALL ConsentEvent log). */
+export async function appendReviewFlag(saleId: string, entry: ReviewFlagEntry): Promise<void> {
+  try {
+    const current = await db.sale.findUniqueOrThrow({ where: { id: saleId }, select: { reviewFlags: true } });
+    const existingFlags = Array.isArray(current.reviewFlags) ? current.reviewFlags : [];
+    const updatedFlags = [...existingFlags, entry].slice(-MAX_REVIEW_FLAGS);
+    await db.sale.update({
+      where: { id: saleId },
+      data: { needsReview: true, reviewFlags: updatedFlags as unknown as Prisma.InputJsonValue },
+    });
+  } catch (err) {
+    console.error(`[voice-agent] failed to record reviewFlags for sale ${saleId}:`, err);
+  }
+}
 
 /**
  * Normalises and sanity-checks a spoken correction before it's allowed to
@@ -51,7 +84,7 @@ type ReviewFlagEntry = {
  */
 function validateNewValue(field: CorrectableField, rawValue: string): { ok: true; value: string } | { ok: false } {
   const trimmed = rawValue.trim();
-  if (!trimmed) {
+  if (!trimmed || trimmed.length > MAX_FREE_TEXT_LENGTH) {
     return { ok: false };
   }
 
@@ -159,19 +192,7 @@ export async function captureCorrection(params: CaptureCorrectionParams): Promis
     correctedAt: new Date().toISOString(),
   };
 
-  try {
-    const current = await db.sale.findUniqueOrThrow({ where: { id: saleId }, select: { reviewFlags: true } });
-    const existingFlags = Array.isArray(current.reviewFlags) ? current.reviewFlags : [];
-    await db.sale.update({
-      where: { id: saleId },
-      data: {
-        needsReview: true,
-        reviewFlags: [...existingFlags, entry] as unknown as Prisma.InputJsonValue,
-      },
-    });
-  } catch (err) {
-    console.error(`[voice-agent] failed to record reviewFlags for sale ${saleId}:`, err);
-  }
+  await appendReviewFlag(saleId, entry);
 
   try {
     await db.consentEvent.create({
@@ -202,15 +223,33 @@ function isCorrectableField(value: unknown): value is CorrectableField {
   return typeof value === "string" && CORRECTABLE_FIELDS.has(value as CorrectableField);
 }
 
-/** Claude's captured_data contract for this feature: { corrections: [{ field, value }] }. Anything malformed is silently dropped rather than thrown -- a prompt-following slip must never crash the call. */
+type ExtractedCorrections = {
+  valid: Array<{ field: CorrectableField; value: string }>;
+  /** True if at least one entry didn't match the {field, value} shape (unknown/misspelled field, non-string value, etc). */
+  hadMalformedEntries: boolean;
+};
+
+/**
+ * Claude's captured_data contract for this feature: { corrections:
+ * [{ field, value }] }. A malformed entry (unknown field, non-string
+ * value, wrong shape) must never crash the call -- but silently dropping
+ * it with zero trace, as this used to, defeats the "always flag it, even
+ * if it didn't validate" guarantee the rest of this file makes: a
+ * customer's stated correction could vanish with no record anywhere, not
+ * even a log line. Now every dropped entry is logged, and the caller
+ * flags the sale for review if anything was dropped.
+ */
 function extractCorrections(
-  capturedData: Record<string, unknown> | undefined
-): Array<{ field: CorrectableField; value: string }> {
+  capturedData: Record<string, unknown> | undefined,
+  context: { state: ConversationStateId; saleId: string }
+): ExtractedCorrections {
   if (!capturedData || !Array.isArray(capturedData.corrections)) {
-    return [];
+    return { valid: [], hadMalformedEntries: false };
   }
 
-  const result: Array<{ field: CorrectableField; value: string }> = [];
+  const valid: Array<{ field: CorrectableField; value: string }> = [];
+  let hadMalformedEntries = false;
+
   for (const item of capturedData.corrections) {
     if (
       item &&
@@ -218,16 +257,58 @@ function extractCorrections(
       isCorrectableField((item as Record<string, unknown>).field) &&
       typeof (item as Record<string, unknown>).value === "string"
     ) {
-      result.push({
+      valid.push({
         field: (item as Record<string, unknown>).field as CorrectableField,
         value: (item as Record<string, unknown>).value as string,
       });
+    } else {
+      hadMalformedEntries = true;
+      console.error(
+        `[voice-agent] dropped malformed correction in state ${context.state} for sale ${context.saleId}:`,
+        JSON.stringify(item)
+      );
     }
   }
-  return result;
+
+  return { valid, hadMalformedEntries };
 }
 
-function resolveOldValue(sale: CallSession["sale"], field: CorrectableField): string {
+type CurrentSaleValues = {
+  customerName: string;
+  customerAddress: string | null;
+  customerEmail: string | null;
+  productName: string;
+  productFrequency: string | null;
+  productPrice: { toString(): string };
+  directDebitMandate: { bankName: string; sortCode: string; accountNumberLast4: string } | null;
+};
+
+/**
+ * Reads the sale/mandate values directly from the DB at the moment of
+ * correction, rather than from callSession.sale (a snapshot taken once at
+ * call bootstrap that's never refreshed). Without this, correcting the
+ * same field twice in one call recorded the WRONG "old value" for the
+ * second correction (the original pre-call value instead of the value
+ * after the first correction), making the audit trail itself inaccurate.
+ */
+async function fetchCurrentSaleValues(saleId: string): Promise<CurrentSaleValues> {
+  return db.sale.findUniqueOrThrow({
+    where: { id: saleId },
+    select: {
+      customerName: true,
+      customerAddress: true,
+      customerEmail: true,
+      productName: true,
+      productFrequency: true,
+      productPrice: true,
+      directDebitMandate: {
+        select: { bankName: true, sortCode: true, accountNumberLast4: true },
+      },
+    },
+  });
+}
+
+function resolveOldValue(sale: CurrentSaleValues, field: CorrectableField): string {
   switch (field) {
     case "customerName":
       return sale.customerName;
@@ -251,6 +332,42 @@ function resolveOldValue(sale: CallSession["sale"], field: CorrectableField): st
 }
 
 /**
+ * A malformed captured_data entry can't be shoehorned into a
+ * CorrectableField-typed reviewFlags entry (we don't reliably know what
+ * field Claude meant), but staff still need SOME signal that a correction
+ * attempt happened and was lost -- rather than it only existing as a log
+ * line nobody is watching. This is deliberately generic/catch-all.
+ */
+async function flagMalformedCorrectionAttempt(
+  saleId: string,
+  verificationSessionId: string,
+  state: ConversationStateId
+): Promise<void> {
+  const note: ReviewFlagEntry = {
+    field: "unknown",
+    state,
+    oldValue: "",
+    newValue: "(malformed captured_data -- see server logs for the raw call)",
+    applied: false,
+    correctedAt: new Date().toISOString(),
+  };
+
+  await appendReviewFlag(saleId, note);
+
+  try {
+    await db.consentEvent.create({
+      data: {
+        verificationSessionId,
+        eventType: "DATA_CORRECTED_ON_CALL",
+        eventPayload: note as unknown as Prisma.InputJsonValue,
+      },
+    });
+  } catch (err) {
+    console.error(`[voice-agent] failed to record malformed-correction event for sale ${saleId}:`, err);
+  }
+}
+
+/**
  * Reads any { corrections: [...] } out of a turn's captured_data and
  * applies each one, regardless of whether that turn was a self-transition
  * (e.g. mid-way through the Direct Debit 3-step confirmation) or a genuine
@@ -263,19 +380,32 @@ export async function applyCapturedCorrections(
   state: ConversationStateId,
   capturedData: Record<string, unknown> | undefined
 ): Promise<void> {
-  const corrections = extractCorrections(capturedData);
+  const { valid: corrections, hadMalformedEntries } = extractCorrections(capturedData, {
+    state,
+    saleId: callSession.sale.id,
+  });
+
+  if (hadMalformedEntries) {
+    await flagMalformedCorrectionAttempt(callSession.sale.id, callSession.verificationSession.id, state);
+  }
+
   if (corrections.length === 0) {
     return;
   }
 
   for (const correction of corrections) {
+    // Fetched fresh on every iteration (not hoisted above the loop) so a
+    // turn correcting the same field twice -- unusual, but the state
+    // prompts don't forbid it -- still records an accurate "old value"
+    // for the second entry too, reflecting the first correction's write.
+    const currentSale = await fetchCurrentSaleValues(callSession.sale.id);
     await captureCorrection({
       saleId: callSession.sale.id,
       directDebitMandateId: callSession.sale.directDebitMandate?.id ?? null,
       verificationSessionId: callSession.verificationSession.id,
       state,
       field: correction.field,
-      oldValue: resolveOldValue(callSession.sale, correction.field),
+      oldValue: resolveOldValue(currentSale, correction.field),
       rawNewValue: correction.value,
     });
   }

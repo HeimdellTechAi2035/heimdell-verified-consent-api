@@ -33,25 +33,38 @@ const SAFE_MANDATE_SELECT = {
  * Does not mark the session OPENED -- completeVerificationSession's own
  * checkCompletionGuards() re-validates status/expiry at completion time
  * regardless, so there's no correctness need to write status here too.
+ *
+ * Deliberately does NOT look up VerificationSession.tokenHash directly --
+ * that's the same secret handed to the customer for the web verification
+ * page. This looks up a separate, one-time PhoneVerificationAttempt.wsTokenHash
+ * instead, minted only inside the Twilio-signature-verified /twiml route
+ * (see src/app/api/v1/voice/verification/[token]/twiml/route.ts), so a
+ * leaked web link alone can never open a WS connection here.
  */
 export async function bootstrapCallSession(rawToken: string): Promise<BootstrapResult> {
-  const tokenHash = hashToken(rawToken);
+  const wsTokenHash = hashToken(rawToken);
 
-  const verificationSession = await db.verificationSession.findUnique({
-    where: { tokenHash },
+  const attempt = await db.phoneVerificationAttempt.findUnique({
+    where: { wsTokenHash },
     include: {
-      sale: {
+      verificationSession: {
         include: {
-          client: true,
-          directDebitMandate: { select: SAFE_MANDATE_SELECT },
+          sale: {
+            include: {
+              client: true,
+              directDebitMandate: { select: SAFE_MANDATE_SELECT },
+            },
+          },
         },
       },
     },
   });
 
-  if (!verificationSession) {
+  if (!attempt || !attempt.wsTokenExpiresAt || attempt.wsTokenExpiresAt < new Date()) {
     return { ok: false, reason: "NOT_FOUND" };
   }
+
+  const verificationSession = attempt.verificationSession;
 
   if (verificationSession.status === "COMPLETED") {
     return { ok: false, reason: "ALREADY_COMPLETED" };

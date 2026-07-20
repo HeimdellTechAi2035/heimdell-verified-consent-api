@@ -136,4 +136,38 @@ const baseData = {
   assert.ok(!withoutGreeting.includes("welcomeGreeting"), "no greeting attribute should be emitted when none is given");
 }
 
+// --- buildIdentityGreetingText: the exact opening line, word for word ---
+{
+  const greeting = twiml.buildIdentityGreetingText("Jane Smith", "Premium Broadband", "Acme Telecom");
+  assert.ok(greeting.includes("This call is being recorded"), "must disclose recording");
+  assert.ok(greeting.includes("Acme Telecom"), "must say who is calling");
+  assert.ok(greeting.includes("Premium Broadband"), "must say what it's about");
+  assert.ok(greeting.includes("Is that Jane Smith?"), "must end by asking for the customer by name");
+  // "who's calling and why" must come BEFORE the "is that <name>" question --
+  // this is the specific ordering fix from a real call where the agent
+  // asked for the customer by name before ever saying who was calling.
+  assert.ok(greeting.indexOf("Acme Telecom") < greeting.indexOf("Is that Jane Smith?"));
+}
+
+// --- buildPolicyDisclosureText: the deterministic POLICY_FAQ injection content ---
+// This is the exact text ws-handler.ts appends by code at the moment of
+// transition into POLICY_FAQ (see the "policyDisclosure" logic in
+// runChainedTurns) -- Claude reading it itself was unreliable on a real
+// call, so this content is generated here instead and just spoken
+// verbatim. Pinning its exact behavior here is the only automated
+// coverage that would catch a regression to that fix.
+{
+  const withSellerPolicies = twiml.buildPolicyDisclosureText(
+    "No refunds after 14 days.",
+    "The Direct Debit Guarantee protects you."
+  );
+  assert.equal(withSellerPolicies, "No refunds after 14 days. The Direct Debit Guarantee protects you.");
+
+  const withoutSellerPolicies = twiml.buildPolicyDisclosureText(null, "The Direct Debit Guarantee protects you.");
+  assert.equal(withoutSellerPolicies, "The Direct Debit Guarantee protects you.", "must fall back to just the DD guarantee wording when the seller left policies blank");
+
+  const blankSellerPolicies = twiml.buildPolicyDisclosureText("   ", "The Direct Debit Guarantee protects you.");
+  assert.equal(blankSellerPolicies, "The Direct Debit Guarantee protects you.", "whitespace-only seller policies must be treated the same as null, not spoken as an empty sentence");
+}
+
 console.log("Voice TwiML verification passed.");

@@ -60,6 +60,27 @@ TWILIO_ACCOUNT_SID  # from Netlify's env vars (not stored in the main app's .env
 ANTHROPIC_API_KEY
 APP_URL             # https://telecomcompliance.uk
 ```
+Also needs the same `SMTP_HOST`/`SMTP_PORT`/`SMTP_SECURE`/`SMTP_USER`/`SMTP_PASSWORD`/
+`NOTIFICATION_EMAIL_FROM` variables as the main app (see root `.env.example`) --
+`terminal-outcomes.ts` sends the customer completion email through the exact same
+shared `src/lib/notifications.ts` code path, whether the call was completed via the
+web link or this phone agent.
+
+## Dependency drift risk (shared src/lib/* code, two separate builds)
+
+This service imports plain TS from the main app's `src/lib/*` (e.g. `notifications.ts`,
+`notification-providers.ts`), bundled here with esbuild using an explicit
+`--external:<package>` list in `package.json`'s `build` script -- unlike the main
+app's Next.js/webpack build, esbuild does NOT resolve this service's own dependency
+graph against the *main app's* `package.json`. If a future change to shared
+`src/lib/*` code adds a new real npm dependency there, it must ALSO be added to
+`voice-agent-service/package.json`'s `dependencies` AND to that `--external:` list,
+or the build here breaks -- either loudly (module not found) or, worse, quietly by
+picking up a hoisted copy from the root `node_modules` that isn't actually a
+declared dependency of this service, which then breaks on the next clean install
+with no compile-time warning. CI now builds this service in its own isolated
+`npm ci` (`.github/workflows/ci.yml`, `voice-agent-service` job) specifically to
+catch this at merge time instead of on a live call.
 
 ## Testing before a real call
 

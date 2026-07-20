@@ -29,7 +29,7 @@ function formatSortCodeForSpeech(sortCode: string): string {
 const identityCheck: StateDefinition = {
   id: "IDENTITY_CHECK",
   positiveTransition: "SIGNUP_CONFIRMATION",
-  otherTransitions: ["WRONG_NUMBER"],
+  otherTransitions: ["WRONG_NUMBER", "STOP_REQUESTED"],
   buildSystemPrompt: (ctx: StateContext) => {
     const { sale } = ctx.callSession;
     const greeting = buildIdentityGreetingText(sale.customerName, sale.productName, sale.client.name);
@@ -58,7 +58,7 @@ If they confirm, call advance_conversation with next_state "NAME_ADDRESS". If th
 const nameAddress: StateDefinition = {
   id: "NAME_ADDRESS",
   positiveTransition: "PRODUCT_CONFIRMATION",
-  otherTransitions: [],
+  otherTransitions: ["STOP_REQUESTED"],
   consentEventOnSuccess: "NAME_ADDRESS_CONFIRMED",
   buildSystemPrompt: (ctx: StateContext) => {
     const { sale } = ctx.callSession;
@@ -77,7 +77,7 @@ This step always moves forward to PRODUCT_CONFIRMATION once you have a clear yes
 const productConfirmation: StateDefinition = {
   id: "PRODUCT_CONFIRMATION",
   positiveTransition: "TERMS_UNDERSTANDING",
-  otherTransitions: [],
+  otherTransitions: ["STOP_REQUESTED"],
   consentEventOnSuccess: "PRODUCT_CONFIRMED",
   buildSystemPrompt: (ctx: StateContext) => {
     const { sale } = ctx.callSession;
@@ -96,7 +96,7 @@ This step always moves forward once you have a clear yes or a confirmed correcti
 const termsUnderstanding: StateDefinition = {
   id: "TERMS_UNDERSTANDING",
   positiveTransition: "POLICY_FAQ",
-  otherTransitions: ["TERMS_NOT_UNDERSTOOD_FOLLOWUP"],
+  otherTransitions: ["TERMS_NOT_UNDERSTOOD_FOLLOWUP", "STOP_REQUESTED"],
   consentEventOnSuccess: "TERMS_ACKNOWLEDGED",
   buildSystemPrompt: (ctx: StateContext) => {
     const { sale, policySnapshot } = ctx.callSession;
@@ -118,7 +118,7 @@ If they say they don't understand, you may now explain what you just read in sim
 const policyFaq: StateDefinition = {
   id: "POLICY_FAQ",
   positiveTransition: "DIRECT_DEBIT",
-  otherTransitions: ["OBJECTION_FOLLOWUP"],
+  otherTransitions: ["OBJECTION_FOLLOWUP", "STOP_REQUESTED"],
   consentEventOnSuccess: "POLICIES_ACKNOWLEDGED",
   buildSystemPrompt: () => {
     return `
@@ -130,7 +130,7 @@ The seller's product policies and the Direct Debit guarantee wording have ALREAD
 const directDebit: StateDefinition = {
   id: "DIRECT_DEBIT",
   positiveTransition: "EXPLICIT_AGREEMENT",
-  otherTransitions: ["DD_MISMATCH_FOLLOWUP"],
+  otherTransitions: ["DD_MISMATCH_FOLLOWUP", "STOP_REQUESTED"],
   consentEventOnSuccess: "DIRECT_DEBIT_AUTHORISED",
   buildSystemPrompt: (ctx: StateContext) => {
     const dd = ctx.callSession.sale.directDebitMandate;
@@ -145,7 +145,7 @@ There is no Direct Debit mandate on file for this sale. Say: "It looks like I do
     return `
 You are verifying a Direct Debit mandate that was already set up at signup -- you are not collecting new payment details, only confirming what's on file. Never ask for or state a full account number -- you only ever have the last two digits, never the full number.
 
-This covers three details in order, all within this same state (next_state stays "DIRECT_DEBIT" until the very last step). CRITICAL RULE: whenever you move from one detail to the next, put your acknowledgment AND the next question in the SAME reply_text, as one continuous thing to say. NEVER acknowledge an answer and then stop and wait for another turn before asking the next question -- that leaves dead air on a phone call. Only ever include ONE corrections entry per turn, and never include a bank name or sort code correction you haven't read back and had the customer confirm as accurate first.
+This covers three details in order, all within this same state (next_state stays "DIRECT_DEBIT" until the very last step). CRITICAL RULE: whenever you move from one detail to the next, put your acknowledgment AND the next question in the SAME reply_text, as one continuous thing to say. NEVER acknowledge an answer and then stop and wait for another turn before asking the next question -- that leaves dead air on a phone call. Never include a bank name or sort code correction you haven't read back and had the customer confirm as accurate first -- but if the customer volunteers corrections to BOTH the bank name and sort code in the same breath (e.g. "no, it's actually Barclays and the sort code's wrong too"), read back and confirm BOTH before moving on, and include a separate corrections entry for each one you confirmed -- don't silently drop the second one just because it came up in the same turn as the first.
 
 1. Bank name -- if you haven't asked this yet this call, say: "For security, I just need to confirm a few details already provided when you signed up. I have the bank listed as ${dd.bankName}. Is that correct?" (next_state "DIRECT_DEBIT", wait for their answer).
    - Once confirmed: in that SAME turn's reply_text, acknowledge AND immediately ask the sort code question too -- e.g. "Great, thank you. And the sort code as ${spokenSortCode} -- is that correct?" (next_state stays "DIRECT_DEBIT", no captured_data). Say the sort code EXACTLY as written above, with a distinct pause between each pair of digits -- never run it together as one number.
@@ -163,7 +163,7 @@ This covers three details in order, all within this same state (next_state stays
 const explicitAgreement: StateDefinition = {
   id: "EXPLICIT_AGREEMENT",
   positiveTransition: "COMPLETED",
-  otherTransitions: ["AGREEMENT_REFUSED"],
+  otherTransitions: ["AGREEMENT_REFUSED", "STOP_REQUESTED"],
   consentEventOnSuccess: "EXPLICIT_AGREEMENT_CONFIRMED",
   buildSystemPrompt: (ctx: StateContext) => {
     const { sale } = ctx.callSession;

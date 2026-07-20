@@ -243,7 +243,7 @@ async function run() {
     assert.equal(finalFlags[1].field, "bankName");
   }
 
-  // --- Test 6: applyCapturedCorrections extracts { corrections: [...] } and ignores malformed data ---
+  // --- Test 6: applyCapturedCorrections extracts { corrections: [...] }, applies only well-formed entries, and flags malformed ones instead of silently dropping them ---
   {
     const fake = makeFakeDb();
     fake.seedSale("sale-6", null);
@@ -268,7 +268,10 @@ async function run() {
     await corrections.applyCapturedCorrections(callSession, "NAME_ADDRESS", undefined);
     assert.equal(fake.calls.consentEvents.length, 0, "no corrections in captured_data must be a no-op");
 
-    // Malformed entries silently dropped, valid one applied.
+    // Malformed entries must not be APPLIED, but must not silently vanish
+    // either -- previously they were dropped with zero trace anywhere,
+    // defeating the "always flag it, even if it didn't validate"
+    // guarantee the rest of this file makes.
     await corrections.applyCapturedCorrections(callSession, "NAME_ADDRESS", {
       corrections: [
         { field: "notARealField", value: "x" },
@@ -277,7 +280,13 @@ async function run() {
       ],
     });
     assert.equal(fake.calls.saleUpdates.filter((u) => u.data.customerName).length, 1, "only the well-formed entry should be applied");
-    assert.equal(fake.calls.consentEvents.length, 1, "malformed entries must not generate their own event");
+    // One event for the well-formed correction, plus one catch-all event
+    // recording that malformed entries were dropped this turn.
+    assert.equal(fake.calls.consentEvents.length, 2, "malformed entries must still be flagged, not silently vanish");
+    const malformedFlagEvent = fake.calls.consentEvents.find((e) => e.eventPayload.field === "unknown");
+    assert.ok(malformedFlagEvent, "a catch-all event must exist for the dropped malformed entries");
+    assert.equal(malformedFlagEvent.eventPayload.applied, false);
+    assert.equal(fake.calls.saleUpdates.filter((u) => u.data.needsReview === true).length >= 2, true, "both the valid correction and the malformed-entry flag must mark needsReview");
   }
 
   console.log("Voice agent corrections verification passed.");
